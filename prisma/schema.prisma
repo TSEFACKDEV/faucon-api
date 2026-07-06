@@ -1,0 +1,214 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum ModeFonctionnement {
+  WORK
+  MOVE
+  STANDBY
+}
+
+enum TypeAlarme {
+  SORTIE_ZONE
+  VITESSE_EXCESSIVE
+  DECOLLEMENT_TRACEUR
+  NON_MOUVEMENT
+  BATTERIE_FAIBLE
+}
+
+enum CanalNotification {
+  SMS
+  PUSH
+  EMAIL
+}
+
+enum StatutCommande {
+  PENDING
+  SUCCESS
+  FAILED
+  TIMEOUT
+}
+
+model Utilisateur {
+  id             String    @id @default(uuid())
+  userName       String    @unique
+  email          String    @unique
+  motDePasseHash String
+  telephone      String?
+  dateCreation   DateTime  @default(now())
+  derniereConnexion DateTime?
+
+  vehicules      Vehicule[]
+  refreshTokens  RefreshToken[]
+
+  @@map("utilisateurs")
+}
+
+model RefreshToken {
+  id              String      @id @default(uuid())
+  token           String      @unique
+  utilisateurId   String
+  utilisateur     Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  dateExpiration  DateTime
+  dateCreation    DateTime    @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model Vehicule {
+  id                    String             @id @default(uuid())
+  imei                  String             @unique
+  nom                   String
+  image                 String?
+  modeActuel            ModeFonctionnement @default(MOVE)
+  niveauBatterie        Int                @default(100)
+  estActif              Boolean            @default(true)
+  dateAjout             DateTime           @default(now())
+  derniereCommunication DateTime?
+
+  utilisateurId         String
+  utilisateur           Utilisateur        @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  limiteVitesse         LimiteVitesse?
+  perimetreGeofence     PerimetreGeofence?
+  positions             Position[]
+  alarmes               Alarme[]
+  rapportsJournaliers   RapportJournalier[]
+  sessionsTrajet        SessionTrajet[]
+  commandes             CommandeDescendante[]
+
+  @@index([utilisateurId])
+  @@map("vehicules")
+}
+
+model Position {
+  id             BigInt    @id @default(autoincrement())
+  vehiculeId     String
+  vehicule       Vehicule  @relation(fields: [vehiculeId], references: [id], onDelete: Cascade)
+  latitude       Float
+  longitude      Float
+  altitude       Float?
+  vitesse        Float
+  cap            Float
+  nbSatellites   Int?
+  hdop           Float?
+  niveauBatterie Int
+  statutACC      Boolean
+  horodatage     DateTime
+  dateReception  DateTime  @default(now())
+
+  @@index([vehiculeId, horodatage])
+  @@map("positions")
+}
+
+model LimiteVitesse {
+  id         String   @id @default(uuid())
+  vehiculeId String   @unique
+  vehicule   Vehicule @relation(fields: [vehiculeId], references: [id], onDelete: Cascade)
+  seuilKmh   Float
+  estActive  Boolean  @default(true)
+  dateModif  DateTime @updatedAt
+
+  @@map("limites_vitesse")
+}
+
+model PerimetreGeofence {
+  id          String   @id @default(uuid())
+  vehiculeId  String   @unique
+  vehicule    Vehicule @relation(fields: [vehiculeId], references: [id], onDelete: Cascade)
+  nom         String
+  centreLat   Float
+  centreLon   Float
+  rayonMetres Float
+  estActif    Boolean  @default(true)
+  dateModif   DateTime @updatedAt
+
+  @@map("perimetres_geofence")
+}
+
+model Alarme {
+  id               String     @id @default(uuid())
+  vehiculeId       String
+  vehicule         Vehicule   @relation(fields: [vehiculeId], references: [id], onDelete: Cascade)
+  typeAlarme       TypeAlarme
+  latitude         Float
+  longitude        Float
+  valeurMesuree    Float?
+  seuilConfigure   Float?
+  estAcquittee     Boolean    @default(false)
+  dateAcquittement DateTime?
+  horodatage       DateTime
+  dateCreation     DateTime   @default(now())
+
+  notifications    Notification[]
+
+  @@index([vehiculeId, horodatage])
+  @@index([estAcquittee])
+  @@map("alarmes")
+}
+
+model Notification {
+  id           String            @id @default(uuid())
+  alarmeId     String
+  alarme       Alarme            @relation(fields: [alarmeId], references: [id], onDelete: Cascade)
+  canal        CanalNotification
+  contenu      String
+  estEnvoyee   Boolean           @default(false)
+  dateEnvoi    DateTime?
+  dateCreation DateTime          @default(now())
+
+  @@map("notifications")
+}
+
+model RapportJournalier {
+  id                String   @id @default(uuid())
+  vehiculeId        String
+  vehicule          Vehicule @relation(fields: [vehiculeId], references: [id], onDelete: Cascade)
+  date              DateTime @db.Date
+  distanceTotaleKm  Float    @default(0)
+  vitesseMoyenne    Float    @default(0)
+  vitesseMax        Float    @default(0)
+  nbAlarmes         Int      @default(0)
+  tempsArretMinutes Int      @default(0)
+  dateGeneration    DateTime @default(now())
+
+  @@unique([vehiculeId, date])
+  @@map("rapports_journaliers")
+}
+
+model SessionTrajet {
+  id           String    @id @default(uuid())
+  vehiculeId   String
+  vehicule     Vehicule  @relation(fields: [vehiculeId], references: [id], onDelete: Cascade)
+  dateDebut    DateTime
+  dateFin      DateTime?
+  distanceKm   Float     @default(0)
+  dureeMinutes Int?
+
+  @@index([vehiculeId, dateDebut])
+  @@map("sessions_trajet")
+}
+
+model CommandeDescendante {
+  id              String         @id @default(uuid())
+  vehiculeId      String
+  vehicule        Vehicule       @relation(fields: [vehiculeId], references: [id], onDelete: Cascade)
+  codeCommande    String
+  parametres      Json?
+  statutExecution StatutCommande @default(PENDING)
+  dateEnvoi       DateTime       @default(now())
+  dateReponse     DateTime?
+
+  @@map("commandes_descendantes")
+}
