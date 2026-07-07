@@ -3,12 +3,12 @@ import { Trame, TramePosition, TrameEvent, TrameHeartbeat } from '../types/track
 const isValidCoord = (lat: number, lon: number): boolean =>
   lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
 
-const isValidImei = (imei: string): boolean =>
-  /^\d{15}$/.test(imei);
+const isValidIdentifier = (id: string): boolean =>
+  /^\d{15}$/.test(id) || /^[A-Z0-9\-]{5,30}$/i.test(id);
 
 export const validateTrame = (trame: Trame): { valid: boolean; reason?: string } => {
-  if (!isValidImei(trame.imei)) {
-    return { valid: false, reason: `IMEI invalide : ${trame.imei}` };
+  if (!isValidIdentifier(trame.imei)) {
+    return { valid: false, reason: `Identifiant traceur invalide : ${trame.imei}` };
   }
 
   if (trame.type === 'POSITION') {

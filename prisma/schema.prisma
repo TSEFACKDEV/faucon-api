@@ -68,7 +68,8 @@ model RefreshToken {
 
 model Vehicule {
   id                    String             @id @default(uuid())
-  imei                  String             @unique
+  imei                  String?            @unique
+  trackerId             String?            @unique
   nom                   String
   image                 String?
   modeActuel            ModeFonctionnement @default(MOVE)
@@ -77,8 +78,8 @@ model Vehicule {
   dateAjout             DateTime           @default(now())
   derniereCommunication DateTime?
 
-  utilisateurId         String
-  utilisateur           Utilisateur        @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  utilisateurId         String?
+  utilisateur           Utilisateur?       @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
 
   limiteVitesse         LimiteVitesse?
   perimetreGeofence     PerimetreGeofence?
@@ -105,6 +106,8 @@ model Position {
   hdop           Float?
   niveauBatterie Int
   statutACC      Boolean
+  cyc            Int?
+  alr            Int?
   horodatage     DateTime
   dateReception  DateTime  @default(now())
 

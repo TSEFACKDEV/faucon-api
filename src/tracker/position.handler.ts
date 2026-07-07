@@ -5,25 +5,37 @@ import { checkGeofence } from '../tracker/geofence.checker';
 import { checkSpeedLimit } from '../tracker/speed.checker';
 import { prisma } from '../config/database';
 
-export const handlePosition = async (
-  trame: TramePosition,
-  vehiculeId: string
+interface PositionPayload {
+  latitude: number;
+  longitude: number;
+  vitesse: number;
+  cap: number;
+  battery: number;
+  timestamp: Date;
+  source: 'http' | 'sms' | 'tcp';
+  eventType?: string;
+  cycleNumber?: number;
+  alertCount?: number;
+}
+
+export const handlePositionPayload = async (
+  vehiculeId: string,
+  payload: PositionPayload
 ): Promise<void> => {
   try {
     // 1. Sauvegarder la position
-    const position = await prisma.position.create({
+    await prisma.position.create({
       data: {
         vehiculeId,
-        latitude:      trame.lat,
-        longitude:     trame.lon,
-        altitude:      trame.alt,
-        vitesse:       trame.speed,
-        cap:           trame.cap,
-        nbSatellites:  trame.sats,
-        hdop:          trame.hdop,
-        niveauBatterie: trame.battery,
-        statutACC:     trame.acc,
-        horodatage:    new Date(trame.ts),
+        latitude:      payload.latitude,
+        longitude:     payload.longitude,
+        vitesse:       payload.vitesse,
+        cap:           payload.cap,
+        niveauBatterie: payload.battery,
+        statutACC:     false,
+        cyc:           payload.cycleNumber,
+        alr:           payload.alertCount,
+        horodatage:    payload.timestamp,
       },
     });
 
@@ -31,32 +43,49 @@ export const handlePosition = async (
     await prisma.vehicule.update({
       where: { id: vehiculeId },
       data: {
-        derniereCommunication: new Date(trame.ts),
-        niveauBatterie: trame.battery,
+        derniereCommunication: payload.timestamp,
+        niveauBatterie: payload.battery,
       },
     });
 
     // 3. Broadcast WebSocket vers le dashboard admin
     broadcastPosition(vehiculeId, {
       vehiculeId,
-      latitude:  trame.lat,
-      longitude: trame.lon,
-      vitesse:   trame.speed,
-      cap:       trame.cap,
-      battery:   trame.battery,
-      horodatage: new Date(trame.ts).toISOString(),
+      latitude:  payload.latitude,
+      longitude: payload.longitude,
+      vitesse:   payload.vitesse,
+      cap:       payload.cap,
+      battery:   payload.battery,
+      horodatage: payload.timestamp.toISOString(),
+      source:    payload.source,
+      eventType: payload.eventType,
     });
 
     // 4. Vérifications asynchrones (ne bloquent pas la réponse au traceur)
-    checkGeofence(vehiculeId, trame.lat, trame.lon).catch(console.error);
-    checkSpeedLimit(vehiculeId, trame.speed).catch(console.error);
-    checkBatteryLevel(vehiculeId, trame.battery).catch(console.error);
+    checkGeofence(vehiculeId, payload.latitude, payload.longitude).catch(console.error);
+    checkSpeedLimit(vehiculeId, payload.vitesse).catch(console.error);
+    checkBatteryLevel(vehiculeId, payload.battery).catch(console.error);
 
-    console.log(`[POSITION] ${trame.imei} → lat:${trame.lat} lon:${trame.lon} speed:${trame.speed}km/h`);
+    console.log(`[POSITION] ${vehiculeId} → lat:${payload.latitude} lon:${payload.longitude} speed:${payload.vitesse}km/h source:${payload.source}`);
   } catch (err) {
     console.error(`[POSITION] Erreur sauvegarde :`, err);
     throw err;
   }
+};
+
+export const handlePosition = async (
+  trame: TramePosition,
+  vehiculeId: string
+): Promise<void> => {
+  await handlePositionPayload(vehiculeId, {
+    latitude: trame.lat,
+    longitude: trame.lon,
+    vitesse: trame.speed,
+    cap: trame.cap,
+    battery: trame.battery,
+    timestamp: new Date(trame.ts),
+    source: 'tcp',
+  });
 };
 
 const checkBatteryLevel = async (vehiculeId: string, battery: number): Promise<void> => {

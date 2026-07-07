@@ -44,6 +44,16 @@ export const authController = {
     }
   },
 
+  updateMe: async (req: AuthRequest, res: Response) => {
+    try {
+      const { userName, email, telephone } = req.body;
+      const user = await authService.updateProfile(req.user!.id, { userName, email, telephone });
+      return sendSuccess(res, 'Profil mis à jour', user);
+    } catch (err: any) {
+      return sendError(res, err.message, 400);
+    }
+  },
+
   logout: async (req: Request, res: Response) => {
     try {
       const { refreshToken } = req.body;

@@ -13,9 +13,14 @@ const TCP_PORT = Number(process.env.TCP_PORT ?? 5000);
 // Map des connexions actives : imei → socket
 const activeConnections = new Map<string, net.Socket>();
 
-const getVehiculeId = async (imei: string): Promise<string | null> => {
-  const vehicule = await prisma.vehicule.findUnique({
-    where: { imei },
+const getVehiculeId = async (identifier: string): Promise<string | null> => {
+  const vehicule = await prisma.vehicule.findFirst({
+    where: {
+      OR: [
+        { imei: identifier },
+        { trackerId: identifier },
+      ],
+    },
     select: { id: true },
   });
   return vehicule?.id ?? null;
@@ -32,7 +37,7 @@ export const startTcpServer = (): net.Server => {
     console.log(`[TCP] Nouvelle connexion : ${clientAddr}`);
 
     let buffer = '';
-    let trackerImei: string | null = null;
+    let trackerIdentifier: string | null = null;
 
     // Timeout : ferme la connexion si aucune donnée en 5 minutes
     socket.setTimeout(5 * 60 * 1000);
@@ -55,17 +60,17 @@ export const startTcpServer = (): net.Server => {
           continue;
         }
 
-        // Vérifier que l'IMEI est enregistré en base
+        // Vérifier que l'identifiant (imei|trackerId) est enregistré en base
         const vehiculeId = await getVehiculeId(trame.imei);
         if (!vehiculeId) {
-          console.warn(`[TCP] IMEI non enregistré : ${trame.imei}`);
-          sendResponse(socket, 'ERROR', 'IMEI non enregistré');
+          console.warn(`[TCP] Traceur non enregistré : ${trame.imei}`);
+          sendResponse(socket, 'ERROR', 'Traceur non enregistré');
           continue;
         }
 
-        // Mémoriser l'IMEI de ce socket
-        if (!trackerImei) {
-          trackerImei = trame.imei;
+        // Mémoriser l'identifiant de ce socket
+        if (!trackerIdentifier) {
+          trackerIdentifier = trame.imei;
           activeConnections.set(trame.imei, socket);
         }
 
@@ -98,7 +103,7 @@ export const startTcpServer = (): net.Server => {
 
     socket.on('close', () => {
       console.log(`[TCP] Connexion fermée : ${clientAddr}`);
-      if (trackerImei) activeConnections.delete(trackerImei);
+      if (trackerIdentifier) activeConnections.delete(trackerIdentifier);
     });
 
     socket.on('error', (err: Error) => {

@@ -24,11 +24,17 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 // Password : Faucon2025!
 // UserName : MAKA MAKA
 //
-// DISPOSITIFS (4 véhicules)
-// FCN-0421 → Container Nord  — IMEI: 358000000000421
-// FCN-0518 → Container Sud   — IMEI: 358000000000518
-// FCN-0733 → Container Est   — IMEI: 358000000000733
-// FCN-0821 → Container Ouest — IMEI: 358000000000821
+// COMPTE DE TEST
+// Email    : user@faucon.cm
+// Password : User2026!
+// UserName : TEST USER
+//
+// DISPOSITIFS ENREGISTRÉS
+// TRACKER-001 → Container Nord  — IMEI: 358000000000421
+// TRACKER-002 → Container Sud   — IMEI: 358000000000518
+// TRACKER-003 → Container Est   — IMEI: 358000000000733
+// TRACKER-004 → Container Ouest — IMEI: 358000000000821
+// TRACKER-005 → Traceur non assigné — IMEI: 358000000000999
 //
 // TCP TEST (netcat localhost 5000) :
 // Copier les trames depuis la section TCP ci-dessous
@@ -69,11 +75,26 @@ async function main() {
 
   console.log(`✓ Administrateur créé : ${admin.email}`);
 
+  const demoUser = await prisma.utilisateur.create({
+    data: {
+      id:              'usr-002-faucon-test',
+      userName:        'TEST USER',
+      email:           'user@faucon.cm',
+      motDePasseHash:  await bcrypt.hash('User2026!', 12),
+      telephone:       '+237 6 66 11 22 33',
+      dateCreation:    new Date('2026-06-01T08:00:00Z'),
+      derniereConnexion: new Date('2026-07-03T09:05:00Z'),
+    },
+  });
+
+  console.log(`✓ Utilisateur de test créé : ${demoUser.email}`);
+
   // ─── VÉHICULE 1 — Container Nord ─────────────────────────────
   const v1 = await prisma.vehicule.create({
     data: {
       id:             'veh-001-container-nord',
       imei:           '358000000000421',
+      trackerId:      'TRACKER-001',
       nom:            'Container Nord',
       modeActuel:     'WORK',
       niveauBatterie: 82,
@@ -107,6 +128,7 @@ async function main() {
     data: {
       id:             'veh-002-container-sud',
       imei:           '358000000000518',
+      trackerId:      'TRACKER-002',
       nom:            'Container Sud',
       modeActuel:     'MOVE',
       niveauBatterie: 46,
@@ -140,6 +162,7 @@ async function main() {
     data: {
       id:             'veh-003-container-est',
       imei:           '358000000000733',
+      trackerId:      'TRACKER-003',
       nom:            'Container Est',
       modeActuel:     'STANDBY',
       niveauBatterie: 12,
@@ -157,16 +180,26 @@ async function main() {
     },
   });
 
+  await prisma.perimetreGeofence.create({
+    data: {
+      vehiculeId:  v3.id,
+      nom:         'Zone Atelier Container Est',
+      centreLat:   4.0360,
+      centreLon:   9.7620,
+      rayonMetres: 2000,
+      estActif:    true,
+    },
+  });
+
   // ─── VÉHICULE 4 — Container Ouest ────────────────────────────
   const v4 = await prisma.vehicule.create({
     data: {
       id:             'veh-004-container-ouest',
-      imei:           '358000000000821',
-      nom:            'Container Ouest',
+      imei:           '358000000000821',      trackerId:      'TRACKER-004',      nom:            'Container Ouest',
       modeActuel:     'MOVE',
       niveauBatterie: 68,
       estActif:       true,
-      utilisateurId:  admin.id,
+      utilisateurId:  demoUser.id,
       derniereCommunication: new Date('2026-07-03T09:40:00Z'),
     },
   });
@@ -190,7 +223,23 @@ async function main() {
     },
   });
 
+  const v5 = await prisma.vehicule.create({
+    data: {
+      id:             'veh-005-tracker-non-assigne',
+      imei:           '358000000000999',
+      trackerId:      'TRACKER-005',
+      nom:            'Traceur non assigné',
+      modeActuel:     'STANDBY',
+      niveauBatterie: 100,
+      estActif:       false,
+      utilisateurId:  null,
+      derniereCommunication: new Date('2026-07-03T10:00:00Z'),
+    },
+  });
+
   console.log('✓ 4 véhicules créés avec limites et géorepérages');
+
+  console.log(`✓ Traceur pré-enregistré disponible pour revendication : ${v5.trackerId}`);
 
   // ─── POSITIONS — Container Nord (trajet Douala port) ─────────
   // Trajet : Port Autonome de Douala → Zone Logistique Bonabéri
@@ -238,7 +287,7 @@ async function main() {
     { lat: 4.0572, lon: 9.7828, speed: 30, cap: 82,  battery: 82, acc: true,  ts: '2026-07-03T07:45:00Z' },
     { lat: 4.0511, lon: 9.7679, speed: 54, cap: 90,  battery: 82, acc: true,  ts: '2026-07-03T09:00:00Z' },
     { lat: 4.0512, lon: 9.7680, speed: 54, cap: 90,  battery: 82, acc: true,  ts: '2026-07-03T09:30:00Z' },
-    { lat: 4.0511, lon: 9.7679, speed: 54, cap: 90,  battery: 82, acc: true,  ts: '2026-07-03T09:55:00Z' },
+    { lat: 4.0511, lon: 9.7679, speed: 54, cap: 90,  battery: 82, acc: true,  ts: '2026-07-03T09:55:00Z', cyc: 7, alr: 1 },
   ];
 
   for (const p of positionsV1Today) {
@@ -268,7 +317,7 @@ async function main() {
     { lat: 4.0400, lon: 9.7670, speed: 55, cap: 75,  battery: 48, acc: true,  ts: '2026-07-02T10:38:00Z' },
     { lat: 4.0408, lon: 9.7690, speed: 38, cap: 78,  battery: 47, acc: true,  ts: '2026-07-02T10:44:00Z' },
     { lat: 4.0412, lon: 9.7700, speed: 20, cap: 80,  battery: 47, acc: true,  ts: '2026-07-02T10:50:00Z' },
-    { lat: 4.0415, lon: 9.7705, speed: 0,  cap: 80,  battery: 47, acc: false, ts: '2026-07-02T11:04:00Z' },
+    { lat: 4.0415, lon: 9.7705, speed: 0,  cap: 80,  battery: 47, acc: false, ts: '2026-07-02T11:04:00Z', cyc: 3, alr: 0 },
   ];
 
   for (const p of positionsV2) {
@@ -303,7 +352,7 @@ async function main() {
     { lat: 3.7500, lon: 10.950, speed: 85,  cap: 75,  battery: 68, acc: true,  ts: '2026-07-01T20:20:00Z' },
     { lat: 3.7300, lon: 11.200, speed: 80,  cap: 72,  battery: 68, acc: true,  ts: '2026-07-01T21:00:00Z' },
     { lat: 3.7225, lon: 11.500, speed: 45,  cap: 68,  battery: 68, acc: true,  ts: '2026-07-01T21:45:00Z' },
-    { lat: 3.7225, lon: 11.553, speed: 0,   cap: 65,  battery: 68, acc: false, ts: '2026-07-01T21:58:00Z' },
+    { lat: 3.7225, lon: 11.553, speed: 0,   cap: 65,  battery: 68, acc: false, ts: '2026-07-01T21:58:00Z', cyc: 12, alr: 1 },
   ];
 
   for (const p of positionsV4Long) {
@@ -327,13 +376,61 @@ async function main() {
     { lat: 4.0352, lon: 9.7605, speed: 8,  cap: 30, battery: 13, acc: true,  ts: '2026-07-03T07:15:00Z' },
     { lat: 4.0355, lon: 9.7612, speed: 18, cap: 45, battery: 13, acc: true,  ts: '2026-07-03T07:20:00Z' },
     { lat: 4.0358, lon: 9.7618, speed: 28, cap: 50, battery: 12, acc: true,  ts: '2026-07-03T07:25:00Z' },
-    { lat: 4.0360, lon: 9.7622, speed: 38, cap: 52, battery: 12, acc: true,  ts: '2026-07-03T07:30:00Z' },
+    { lat: 4.0360, lon: 9.7622, speed: 38, cap: 52, battery: 12, acc: true,  ts: '2026-07-03T07:30:00Z', cyc: 1, alr: 0 },
   ];
 
   for (const p of positionsV3Today) {
     await prisma.position.create({
       data: {
         vehiculeId:    v3.id,
+        latitude:      p.lat,
+        longitude:     p.lon,
+        vitesse:       p.speed,
+        cap:           p.cap,
+        niveauBatterie: p.battery,
+        statutACC:     p.acc,
+        horodatage:    new Date(p.ts),
+      },
+    });
+  }
+
+  const positionsV2Today = [
+    { lat: 4.0330, lon: 9.7530, speed: 0,  cap: 0,  battery: 46, acc: false, ts: '2026-07-03T08:30:00Z' },
+    { lat: 4.0342, lon: 9.7548, speed: 18, cap: 60, battery: 46, acc: true,  ts: '2026-07-03T08:40:00Z' },
+    { lat: 4.0360, lon: 9.7575, speed: 42, cap: 70, battery: 45, acc: true,  ts: '2026-07-03T08:50:00Z' },
+    { lat: 4.0380, lon: 9.7605, speed: 52, cap: 80, battery: 45, acc: true,  ts: '2026-07-03T09:00:00Z' },
+    { lat: 4.0398, lon: 9.7630, speed: 36, cap: 90, battery: 45, acc: true,  ts: '2026-07-03T09:10:00Z' },
+    { lat: 4.0415, lon: 9.7705, speed: 0,  cap: 0,  battery: 47, acc: false, ts: '2026-07-03T09:20:00Z', cyc: 2, alr: 0 },
+  ];
+
+  for (const p of positionsV2Today) {
+    await prisma.position.create({
+      data: {
+        vehiculeId:    v2.id,
+        latitude:      p.lat,
+        longitude:     p.lon,
+        vitesse:       p.speed,
+        cap:           p.cap,
+        niveauBatterie: p.battery,
+        statutACC:     p.acc,
+        horodatage:    new Date(p.ts),
+      },
+    });
+  }
+
+  const positionsV4Today = [
+    { lat: 3.9225, lon: 10.1000, speed: 88, cap: 80, battery: 68, acc: true,  ts: '2026-07-03T08:15:00Z' },
+    { lat: 3.9120, lon: 10.0750, speed: 84, cap: 82, battery: 67, acc: true,  ts: '2026-07-03T08:35:00Z' },
+    { lat: 3.8900, lon: 10.0300, speed: 76, cap: 85, battery: 67, acc: true,  ts: '2026-07-03T08:55:00Z' },
+    { lat: 3.8600, lon: 9.9800,  speed: 72, cap: 88, battery: 66, acc: true,  ts: '2026-07-03T09:15:00Z' },
+    { lat: 3.8300, lon: 9.9400,  speed: 64, cap: 92, battery: 66, acc: true,  ts: '2026-07-03T09:40:00Z' },
+    { lat: 3.7960, lon: 9.9100,  speed: 0,  cap: 0,  battery: 65, acc: false, ts: '2026-07-03T10:05:00Z' },
+  ];
+
+  for (const p of positionsV4Today) {
+    await prisma.position.create({
+      data: {
+        vehiculeId:    v4.id,
         latitude:      p.lat,
         longitude:     p.lon,
         vitesse:       p.speed,
@@ -567,12 +664,13 @@ async function main() {
   console.log('\n  CONNEXION WEB / API :');
   console.log('  Email    : admin@faucon.cm');
   console.log('  Password : Faucon2025!');
-  console.log('  DeviceID : FCN-0421 (pour le champ ID Dispositif)');
+  console.log('  DeviceID : TRACKER-001 (pour le champ ID Dispositif)');
   console.log('\n  VÉHICULES :');
   console.log('  Container Nord  → IMEI: 358000000000421 | Batterie: 82% | Mode: WORK');
-  console.log('  Container Sud   → IMEI: 358000000000518 | Batterie: 46% | Mode: MOVE');
+  console.log('  Container Sud   → IMEI: 358000000000518 | Batterie: 47% | Mode: MOVE');
   console.log('  Container Est   → IMEI: 358000000000733 | Batterie: 12% | Mode: STANDBY ⚠️');
-  console.log('  Container Ouest → IMEI: 358000000000821 | Batterie: 68% | Mode: MOVE');
+  console.log('  Container Ouest → IMEI: 358000000000821 | Batterie: 65% | Mode: MOVE');
+  console.log('  Traceur non assigné → TRACKER-005 / IMEI: 358000000000999');
   console.log('\n  ALARMES NON ACQUITTÉES :');
   console.log('  - Container Est  → DECOLLEMENT_TRACEUR (11:04)');
   console.log('  - Container Est  → BATTERIE_FAIBLE 12% (10:47)');
@@ -581,6 +679,18 @@ async function main() {
   console.log('  Voir section TCP ci-dessous dans ce fichier');
   console.log('════════════════════════════════════════\n');
 }
+
+// Exemples de trames TCP autorisees par le listener sur le port 5000 :
+//
+// {"type":"POSITION","imei":"358000000000421","ts":"2026-07-03T09:55:00Z","lat":4.0511,"lon":9.7679,"speed":0,"cap":0,"battery":84}
+// {"type":"POSITION","imei":"358000000000518","ts":"2026-07-03T09:20:00Z","lat":4.0415,"lon":9.7705,"speed":0,"cap":0,"battery":47}
+// {"type":"POSITION","imei":"358000000000733","ts":"2026-07-03T07:30:00Z","lat":4.0360,"lon":9.7622,"speed":38,"cap":52,"battery":12}
+// {"type":"POSITION","imei":"358000000000821","ts":"2026-07-03T10:05:00Z","lat":3.7960,"lon":9.9100,"speed":0,"cap":0,"battery":65}
+//
+// Exemple de webhook HTTP :
+// POST /api/tracker/webhook?id=358000000000421&lat=4.0511&lon=9.7679&bat=84&spd=0&cap=0&ts=2026-07-03T09:55:00Z
+// Exemple de SMS texte :
+// NORMAL FCN-0733 Pos: 4.0360,9.7622 Bat:12%
 
 main()
   .catch(e => { console.error('Seed échoué :', e); process.exit(1); })

@@ -5,10 +5,11 @@ import cors from 'cors';
 import morgan from 'morgan';
 import authRoutes    from './routes/auth.routes';
 import vehicleRoutes from './routes/vehicle.routes';
+import trackerRoutes from './routes/tracker.routes';
 import { errorHandler, notFound } from './middlewares/error.middleware';
 import { initWebSocket }  from './tracker/websocket.service';
 import { startTcpServer } from './tracker/tcp.server';
-import { startCronJobs }  from './cron/scheduler';  // ← AJOUT
+import { startCronJobs }  from './cron/scheduler';
 
 const app        = express();
 const httpServer = http.createServer(app);
@@ -25,13 +26,15 @@ app.get('/health', (_, res) => {
 
 app.use('/auth',     authRoutes);
 app.use('/vehicles', vehicleRoutes);
+app.use('/devices',  vehicleRoutes);
+app.use('/tracker',  trackerRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
 
 initWebSocket(httpServer);
 startTcpServer();
-startCronJobs();  // ← AJOUT
+startCronJobs();
 
 httpServer.listen(PORT, () => {
   console.log(`\n🦅 FAUCON API démarrée sur http://localhost:${PORT}`);

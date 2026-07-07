@@ -14,6 +14,9 @@ export const parseTrame = (raw: string): Trame[] => {
     try {
       const parsed = JSON.parse(line);
 
+      // Normalize identifier: some trackers send `id` or `trackerId` instead of `imei`
+      parsed.imei = parsed.imei ?? parsed.id ?? parsed.trackerId;
+
       if (!parsed.type || !parsed.imei || !parsed.ts) {
         console.warn(`[PARSER] Trame ignorée — champs obligatoires manquants :`, line);
         continue;

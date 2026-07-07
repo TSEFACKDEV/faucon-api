@@ -2,14 +2,39 @@ import {prisma} from '../config/database';
 
 export const vehicleService = {
 
-  addVehicle: async (utilisateurId: string, imei: string, nom: string) => {
-    const existing = await prisma.vehicule.findUnique({ where: { imei } });
-    if (existing) throw new Error('Cet IMEI est déjà enregistré');
+  addVehicle: async (utilisateurId: string, identifier: string, nom: string) => {
+    const existingByImei = await prisma.vehicule.findUnique({ where: { imei: identifier } });
+    const existingByTrackerId = await prisma.vehicule.findUnique({ where: { trackerId: identifier } });
+    const existing = existingByImei ?? existingByTrackerId;
 
-    return prisma.vehicule.create({
-      data: { imei, nom, utilisateurId },
+    if (!existing) {
+      throw new Error('Traceur non enregistré. Veuillez vérifier l’identifiant du boîtier.');
+    }
+
+    if (existing.utilisateurId && existing.utilisateurId !== utilisateurId) {
+      throw new Error('Ce traceur est déjà connecté à un autre compte.');
+    }
+
+    const updateData: any = {
+      nom: nom ?? existing.nom,
+      estActif: true,
+    };
+
+    if (!existing.utilisateurId) {
+      updateData.utilisateurId = utilisateurId;
+    }
+    if (!existing.imei && /^[0-9]{15}$/.test(identifier)) {
+      updateData.imei = identifier;
+    }
+    if (!existing.trackerId) {
+      updateData.trackerId = identifier;
+    }
+
+    return prisma.vehicule.update({
+      where: { id: existing.id },
+      data: updateData,
       select: {
-        id: true, imei: true, nom: true,
+        id: true, imei: true, trackerId: true, nom: true,
         modeActuel: true, niveauBatterie: true, estActif: true, dateAjout: true,
       },
     });
@@ -126,6 +151,33 @@ export const vehicleService = {
       where: {
         vehiculeId,
         horodatage: { gte: start, lte: end },
+      },
+      orderBy: { horodatage: 'asc' },
+      select: {
+        id: true, latitude: true, longitude: true,
+        vitesse: true, cap: true, horodatage: true,
+      },
+    });
+  },
+
+  getPositionHistoryRange: async (
+    vehiculeId: string,
+    utilisateurId: string,
+    from?: string,
+    to?: string
+  ) => {
+    const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+    if (!vehicle) throw new Error('Véhicule introuvable');
+
+    return prisma.position.findMany({
+      where: {
+        vehiculeId,
+        ...(from || to ? {
+          horodatage: {
+            ...(from ? { gte: new Date(from) } : {}),
+            ...(to ? { lte: new Date(to) } : {}),
+          },
+        } : {}),
       },
       orderBy: { horodatage: 'asc' },
       select: {

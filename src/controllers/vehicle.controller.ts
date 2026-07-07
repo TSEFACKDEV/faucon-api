@@ -16,9 +16,12 @@ export const vehicleController = {
 
   addVehicle: async (req: AuthRequest, res: Response) => {
     try {
-      const { imei, nom } = req.body;
-      if (!imei || !nom) return sendError(res, 'IMEI et nom requis', 400);
-      const vehicle = await vehicleService.addVehicle(req.user!.id, imei, nom);
+      const rawIdentifier = req.body.imei ?? req.body.deviceId ?? req.body.id ?? req.body.trackerId;
+      const rawNom = req.body.nom ?? req.body.deviceName;
+      const nom = rawNom ?? `Dispositif ${String(rawIdentifier ?? '').slice(-4)}`;
+
+      if (!rawIdentifier) return sendError(res, 'Identifiant du traceur requis', 400);
+      const vehicle = await vehicleService.addVehicle(req.user!.id, String(rawIdentifier), String(nom));
       return sendSuccess(res, 'Appareil ajouté', vehicle, 201);
     } catch (err: any) {
       return sendError(res, err.message);
@@ -136,10 +139,30 @@ export const vehicleController = {
     try {
       const id = getParamId(req.params.id);
       if (!id) return sendError(res, 'ID du véhicule requis', 400);
-      
-      const date = req.query.date as string ?? new Date().toISOString().split('T')[0];
-      const positions = await vehicleService.getPositionHistory(id, req.user!.id, date);
+
+      const from = req.query.from as string | undefined;
+      const to = req.query.to as string | undefined;
+      const date = req.query.date as string | undefined;
+
+      const positions = from || to
+        ? await vehicleService.getPositionHistoryRange(id, req.user!.id, from, to)
+        : await vehicleService.getPositionHistory(id, req.user!.id, date ?? new Date().toISOString().split('T')[0]);
+
       return sendSuccess(res, 'Historique récupéré', positions);
+    } catch (err: any) {
+      return sendError(res, err.message);
+    }
+  },
+
+  getReplay: async (req: AuthRequest, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID du véhicule requis', 400);
+
+      const from = req.query.from as string | undefined;
+      const to = req.query.to as string | undefined;
+      const positions = await vehicleService.getPositionHistoryRange(id, req.user!.id, from, to);
+      return sendSuccess(res, 'Replay récupéré', positions);
     } catch (err: any) {
       return sendError(res, err.message);
     }
@@ -152,6 +175,11 @@ export const vehicleController = {
       
       const date = req.query.date as string ?? new Date().toISOString().split('T')[0];
       const report = await vehicleService.getDailyReport(id, req.user!.id, date);
+      if (!report) {
+        await generateVehicleReport(id, new Date(date));
+        const regenerated = await vehicleService.getDailyReport(id, req.user!.id, date);
+        return sendSuccess(res, 'Rapport journalier', regenerated);
+      }
       return sendSuccess(res, 'Rapport journalier', report);
     } catch (err: any) {
       return sendError(res, err.message);
@@ -172,11 +200,23 @@ export const vehicleController = {
 
   acquitAlarme: async (req: AuthRequest, res: Response) => {
     try {
-      const alarmeId = getParamId(req.params.alarmeId);
+      const alarmeId = getParamId(req.params.alarmeId ?? req.params.id);
       if (!alarmeId) return sendError(res, 'ID de l\'alarme requis', 400);
       
       const alarme = await vehicleService.acquitAlarme(alarmeId, req.user!.id);
       return sendSuccess(res, 'Alarme acquittée', alarme);
+    } catch (err: any) {
+      return sendError(res, err.message);
+    }
+  },
+
+  readAlert: async (req: AuthRequest, res: Response) => {
+    try {
+      const alarmeId = getParamId(req.params.id);
+      if (!alarmeId) return sendError(res, 'ID de l\'alarme requis', 400);
+
+      const alarme = await vehicleService.acquitAlarme(alarmeId, req.user!.id);
+      return sendSuccess(res, 'Alerte lue', alarme);
     } catch (err: any) {
       return sendError(res, err.message);
     }

@@ -70,6 +70,35 @@ export const authService = {
     return user;
   },
 
+  updateProfile: async (
+    userId: string,
+    changes: { userName?: string; email?: string; telephone?: string }
+  ) => {
+    const { userName, email, telephone } = changes;
+
+    if (userName) {
+      const existing = await prisma.utilisateur.findUnique({ where: { userName } });
+      if (existing && existing.id !== userId) throw new Error('Ce nom d\'utilisateur est déjà pris');
+    }
+
+    if (email) {
+      const existing = await prisma.utilisateur.findUnique({ where: { email } });
+      if (existing && existing.id !== userId) throw new Error('Cet email est déjà utilisé');
+    }
+
+    const user = await prisma.utilisateur.update({
+      where: { id: userId },
+      data: {
+        ...(userName !== undefined && { userName }),
+        ...(email !== undefined && { email }),
+        ...(telephone !== undefined && { telephone }),
+      },
+      select: { id: true, userName: true, email: true, telephone: true, dateCreation: true },
+    });
+
+    return user;
+  },
+
   logout: async (refreshToken: string) => {
     await prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
   },

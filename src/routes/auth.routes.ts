@@ -9,5 +9,6 @@ router.post('/login',    authController.login);
 router.post('/logout',   authController.logout);
 router.post('/refresh',  authController.refresh);
 router.get('/me',        protect, authController.me);
+router.patch('/me',      protect, authController.updateMe);
 
 export default router;

@@ -36,19 +36,21 @@ export const sendReportNotifications = async (date: Date): Promise<void> => {
 
   // Envoyer les emails en parallèle
   const results = await Promise.allSettled(
-    rapports.map(rapport =>
-      sendReportEmail({
-        toEmail:          rapport.vehicule.utilisateur.email,
-        userName:         rapport.vehicule.utilisateur.userName,
-        vehicleName:      rapport.vehicule.nom,
-        date:             dateStr,
-        distanceTotaleKm:  rapport.distanceTotaleKm,
-        vitesseMoyenne:    rapport.vitesseMoyenne,
-        vitesseMax:        rapport.vitesseMax,
-        nbAlarmes:         rapport.nbAlarmes,
-        tempsArretMinutes: rapport.tempsArretMinutes,
-      })
-    )
+    rapports
+      .filter((rapport) => rapport.vehicule.utilisateur !== null)
+      .map((rapport) =>
+        sendReportEmail({
+          toEmail:          rapport.vehicule.utilisateur!.email,
+          userName:         rapport.vehicule.utilisateur!.userName,
+          vehicleName:      rapport.vehicule.nom,
+          date:             dateStr,
+          distanceTotaleKm:  rapport.distanceTotaleKm,
+          vitesseMoyenne:    rapport.vitesseMoyenne,
+          vitesseMax:        rapport.vitesseMax,
+          nbAlarmes:         rapport.nbAlarmes,
+          tempsArretMinutes: rapport.tempsArretMinutes,
+        })
+      )
   );
 
   const success = results.filter(r => r.status === 'fulfilled').length;
