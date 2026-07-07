@@ -1,4 +1,4 @@
-import { Response, NextFunction } from 'express';
+import { Response } from 'express';
 import { AuthRequest } from '../types';
 import { vehicleService } from '../services/vehicle.service';
 import { sendSuccess, sendError } from '../utils/response';
@@ -24,7 +24,7 @@ export const vehicleController = {
       const vehicle = await vehicleService.addVehicle(req.user!.id, String(rawIdentifier), String(nom));
       return sendSuccess(res, 'Appareil ajouté', vehicle, 201);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -33,7 +33,7 @@ export const vehicleController = {
       const vehicles = await vehicleService.getVehicles(req.user!.id);
       return sendSuccess(res, 'Appareils récupérés', vehicles);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -45,7 +45,7 @@ export const vehicleController = {
       const vehicle = await vehicleService.getVehicleById(id, req.user!.id);
       return sendSuccess(res, 'Véhicule récupéré', vehicle);
     } catch (err: any) {
-      return sendError(res, err.message, 404);
+      return sendError(res, err.message, err.statusCode ?? 404);
     }
   },
 
@@ -58,7 +58,7 @@ export const vehicleController = {
       const vehicle = await vehicleService.updateVehicle(id, req.user!.id, { nom, image });
       return sendSuccess(res, 'Véhicule mis à jour', vehicle);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -70,7 +70,7 @@ export const vehicleController = {
       await vehicleService.deleteVehicle(id, req.user!.id);
       return sendSuccess(res, 'Véhicule supprimé');
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -84,7 +84,7 @@ export const vehicleController = {
       const result = await vehicleService.setSpeedLimit(id, req.user!.id, Number(seuilKmh));
       return sendSuccess(res, 'Limite de vitesse configurée', result);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -103,7 +103,7 @@ export const vehicleController = {
       );
       return sendSuccess(res, 'Zone de sécurité configurée', result);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -119,7 +119,7 @@ export const vehicleController = {
       const result = await vehicleService.setMode(id, req.user!.id, mode);
       return sendSuccess(res, 'Mode mis à jour', result);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -131,7 +131,7 @@ export const vehicleController = {
       const position = await vehicleService.getLastPosition(id, req.user!.id);
       return sendSuccess(res, 'Dernière position', position);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -150,7 +150,7 @@ export const vehicleController = {
 
       return sendSuccess(res, 'Historique récupéré', positions);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -164,7 +164,7 @@ export const vehicleController = {
       const positions = await vehicleService.getPositionHistoryRange(id, req.user!.id, from, to);
       return sendSuccess(res, 'Replay récupéré', positions);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -182,7 +182,7 @@ export const vehicleController = {
       }
       return sendSuccess(res, 'Rapport journalier', report);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -194,7 +194,7 @@ export const vehicleController = {
       const alarmes = await vehicleService.getAlarmes(id, req.user!.id);
       return sendSuccess(res, 'Alarmes récupérées', alarmes);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -206,19 +206,7 @@ export const vehicleController = {
       const alarme = await vehicleService.acquitAlarme(alarmeId, req.user!.id);
       return sendSuccess(res, 'Alarme acquittée', alarme);
     } catch (err: any) {
-      return sendError(res, err.message);
-    }
-  },
-
-  readAlert: async (req: AuthRequest, res: Response) => {
-    try {
-      const alarmeId = getParamId(req.params.id);
-      if (!alarmeId) return sendError(res, 'ID de l\'alarme requis', 400);
-
-      const alarme = await vehicleService.acquitAlarme(alarmeId, req.user!.id);
-      return sendSuccess(res, 'Alerte lue', alarme);
-    } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 
@@ -249,7 +237,7 @@ generateReport: async (req: AuthRequest, res: Response) => {
 
       return sendSuccess(res, 'Rapport généré', report);
     } catch (err: any) {
-      return sendError(res, err.message);
+      return sendError(res, err.message, err.statusCode ?? 400);
     }
   },
 };

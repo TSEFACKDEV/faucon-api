@@ -1,11 +1,11 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { authService } from '../services/auth.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { AuthRequest } from '../types';
 
 export const authController = {
 
-  register: async (req: Request, res: Response, next: NextFunction) => {
+  register: async (req: Request, res: Response) => {
     try {
       const { userName, email, password } = req.body;
 
@@ -20,7 +20,7 @@ export const authController = {
     }
   },
 
-  login: async (req: Request, res: Response, next: NextFunction) => {
+  login: async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body;
 

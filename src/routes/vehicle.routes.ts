@@ -19,17 +19,12 @@ router.put('/:id/geofence',                   vehicleController.setGeofence);
 router.put('/:id/mode',                       vehicleController.setMode);
 
 router.get('/:id/position/last',              vehicleController.getLastPosition);
-router.get('/:id/positions',                  vehicleController.getPositionHistory);
 router.get('/:id/replay',                     vehicleController.getReplay);
 router.get('/:id/position/history',           vehicleController.getPositionHistory);
 router.get('/:id/report/daily',               vehicleController.getDailyReport);
-router.get('/:id/alerts',                     vehicleController.getAlarmes);
 router.get('/:id/alarmes',                    vehicleController.getAlarmes);
-router.patch('/alerts/:id/read',              vehicleController.readAlert);
-router.patch('/:id/alerts/:alarmeId/read',     vehicleController.acquitAlarme);
 router.patch('/:id/alarmes/:alarmeId/acquit', vehicleController.acquitAlarme);
 
 router.post('/:id/report/generate', vehicleController.generateReport);
-router.post('/:id/reports', vehicleController.generateReport);
 
 export default router;

@@ -92,12 +92,18 @@ const checkNonMouvement = async (): Promise<void> => {
 
     if (existing) continue;
 
+    const dernierePosition = await prisma.position.findFirst({
+      where: { vehiculeId: vehicule.id },
+      orderBy: { horodatage: 'desc' },
+      select: { latitude: true, longitude: true },
+    });
+
     await prisma.alarme.create({
       data: {
         vehiculeId:  vehicule.id,
         typeAlarme:  'NON_MOUVEMENT',
-        latitude:    0,
-        longitude:   0,
+        latitude:    dernierePosition?.latitude ?? 0,
+        longitude:   dernierePosition?.longitude ?? 0,
         horodatage:  new Date(),
       },
     });

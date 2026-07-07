@@ -1,5 +1,4 @@
 import net from 'net';
-import {prisma }from '../config/database';
 import { parseTrame } from './trame.parser';
 import { validateTrame } from './trame.validator';
 import { handlePosition } from './position.handler';
@@ -7,6 +6,7 @@ import { handlePosition } from './position.handler';
 import { handleHeartbeat } from './heartbeat.handler';
 import { TramePosition, TrameEvent, TrameHeartbeat } from '../types/tracker.types';
 import { handleEvent } from './event.handler';
+import { findVehiculeByIdentifier } from '../services/vehicle-lookup.service';
 
 const TCP_PORT = Number(process.env.TCP_PORT ?? 5000);
 
@@ -14,15 +14,7 @@ const TCP_PORT = Number(process.env.TCP_PORT ?? 5000);
 const activeConnections = new Map<string, net.Socket>();
 
 const getVehiculeId = async (identifier: string): Promise<string | null> => {
-  const vehicule = await prisma.vehicule.findFirst({
-    where: {
-      OR: [
-        { imei: identifier },
-        { trackerId: identifier },
-      ],
-    },
-    select: { id: true },
-  });
+  const vehicule = await findVehiculeByIdentifier(identifier);
   return vehicule?.id ?? null;
 };
 

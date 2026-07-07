@@ -162,7 +162,7 @@ async function main() {
     data: {
       id:             'veh-003-container-est',
       imei:           '358000000000733',
-      trackerId:      'TRACKER-003',
+      trackerId:      'FCN-0733',
       nom:            'Container Est',
       modeActuel:     'STANDBY',
       niveauBatterie: 12,
@@ -686,6 +686,9 @@ async function main() {
 // {"type":"POSITION","imei":"358000000000518","ts":"2026-07-03T09:20:00Z","lat":4.0415,"lon":9.7705,"speed":0,"cap":0,"battery":47}
 // {"type":"POSITION","imei":"358000000000733","ts":"2026-07-03T07:30:00Z","lat":4.0360,"lon":9.7622,"speed":38,"cap":52,"battery":12}
 // {"type":"POSITION","imei":"358000000000821","ts":"2026-07-03T10:05:00Z","lat":3.7960,"lon":9.9100,"speed":0,"cap":0,"battery":65}
+
+// Exemple utilisant `trackerId` (tel que renvoyé par le firmware corrigé)
+// {"type":"POSITION","trackerId":"FCN-0733","ts":"2026-07-03T07:30:00Z","lat":4.0360,"lon":9.7622,"speed":38,"cap":52,"battery":12}
 //
 // Exemple de webhook HTTP :
 // POST /api/tracker/webhook?id=358000000000421&lat=4.0511&lon=9.7679&bat=84&spd=0&cap=0&ts=2026-07-03T09:55:00Z

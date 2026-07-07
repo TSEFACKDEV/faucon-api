@@ -1,18 +1,18 @@
 import {prisma} from '../config/database';
+import { AppError, NotFoundError } from '../utils/errors';
+import { findVehiculeByIdentifier } from './vehicle-lookup.service';
 
 export const vehicleService = {
 
   addVehicle: async (utilisateurId: string, identifier: string, nom: string) => {
-    const existingByImei = await prisma.vehicule.findUnique({ where: { imei: identifier } });
-    const existingByTrackerId = await prisma.vehicule.findUnique({ where: { trackerId: identifier } });
-    const existing = existingByImei ?? existingByTrackerId;
+    const existing = await findVehiculeByIdentifier(identifier);
 
     if (!existing) {
-      throw new Error('Traceur non enregistré. Veuillez vérifier l’identifiant du boîtier.');
+      throw new NotFoundError('Traceur non enregistré. Veuillez vérifier l’identifiant du boîtier.');
     }
 
     if (existing.utilisateurId && existing.utilisateurId !== utilisateurId) {
-      throw new Error('Ce traceur est déjà connecté à un autre compte.');
+      throw new AppError('Ce traceur est déjà connecté à un autre compte.', 409);
     }
 
     const updateData: any = {
@@ -67,13 +67,13 @@ export const vehicleService = {
         },
       },
     });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
     return vehicle;
   },
 
   updateVehicle: async (id: string, utilisateurId: string, data: { nom?: string; image?: string }) => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.vehicule.update({
       where: { id },
@@ -84,13 +84,13 @@ export const vehicleService = {
 
   deleteVehicle: async (id: string, utilisateurId: string) => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
     await prisma.vehicule.delete({ where: { id } });
   },
 
   setSpeedLimit: async (vehiculeId: string, utilisateurId: string, seuilKmh: number) => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.limiteVitesse.upsert({
       where: { vehiculeId },
@@ -108,7 +108,7 @@ export const vehicleService = {
     rayonMetres: number
   ) => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.perimetreGeofence.upsert({
       where: { vehiculeId },
@@ -119,7 +119,7 @@ export const vehicleService = {
 
   setMode: async (vehiculeId: string, utilisateurId: string, mode: 'WORK' | 'MOVE' | 'STANDBY') => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.vehicule.update({
       where: { id: vehiculeId },
@@ -130,7 +130,7 @@ export const vehicleService = {
 
   getLastPosition: async (vehiculeId: string, utilisateurId: string) => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.position.findFirst({
       where: { vehiculeId },
@@ -140,7 +140,7 @@ export const vehicleService = {
 
   getPositionHistory: async (vehiculeId: string, utilisateurId: string, date: string) => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);
@@ -167,7 +167,7 @@ export const vehicleService = {
     to?: string
   ) => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.position.findMany({
       where: {
@@ -189,7 +189,7 @@ export const vehicleService = {
 
   getDailyReport: async (vehiculeId: string, utilisateurId: string, date: string) => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.rapportJournalier.findFirst({
       where: { vehiculeId, date: new Date(date) },
@@ -198,7 +198,7 @@ export const vehicleService = {
 
   getAlarmes: async (vehiculeId: string, utilisateurId: string) => {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
-    if (!vehicle) throw new Error('Véhicule introuvable');
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.alarme.findMany({
       where: { vehiculeId },
@@ -211,7 +211,7 @@ export const vehicleService = {
     const alarme = await prisma.alarme.findFirst({
       where: { id: alarmeId, vehicule: { utilisateurId } },
     });
-    if (!alarme) throw new Error('Alarme introuvable');
+    if (!alarme) throw new NotFoundError('Alarme introuvable');
 
     return prisma.alarme.update({
       where: { id: alarmeId },

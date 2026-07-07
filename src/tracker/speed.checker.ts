@@ -3,7 +3,9 @@ import { prisma } from "../config/database";
 
 export const checkSpeedLimit = async (
   vehiculeId: string,
-  speed: number
+  speed: number,
+  latitude: number,
+  longitude: number
 ): Promise<void> => {
   const limit = await prisma.limiteVitesse.findUnique({
     where: { vehiculeId },
@@ -28,8 +30,8 @@ export const checkSpeedLimit = async (
     data: {
       vehiculeId,
       typeAlarme:    'VITESSE_EXCESSIVE',
-      latitude:      0,
-      longitude:     0,
+      latitude,
+      longitude,
       valeurMesuree: speed,
       seuilConfigure: limit.seuilKmh,
       horodatage:    new Date(),

@@ -1,4 +1,4 @@
-import { Trame, TramePosition, TrameEvent, TrameHeartbeat } from '../types/tracker.types';
+import { Trame, TramePosition, TrameEvent } from '../types/tracker.types';
 
 const isValidCoord = (lat: number, lon: number): boolean =>
   lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
@@ -38,8 +38,10 @@ export const validateTrame = (trame: Trame): { valid: boolean; reason?: string }
     }
   }
 
-  // Horodatage : refuser les trames trop anciennes (> 10 min)
-  const age = Date.now() - trame.ts;
+  // Horodatage : signaler les trames trop anciennes (> 10 min), sans les
+  // rejeter (cas fréquent en zone de couverture réseau intermittente).
+  const trameTime = new Date(trame.ts).getTime();
+  const age = Number.isNaN(trameTime) ? 0 : Date.now() - trameTime;
   if (age > 10 * 60 * 1000) {
     console.warn(`[VALIDATOR] Trame ancienne (${Math.round(age / 1000)}s) — acceptée quand même (zone morte)`);
   }

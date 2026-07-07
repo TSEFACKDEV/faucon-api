@@ -23,7 +23,7 @@ export interface TramePosition {
   battery:  number;
   acc:      boolean;
   network?: NetworkType;
-  ts:       number;
+  ts:       string | number;
 }
 
 export interface TrameEvent {
@@ -34,7 +34,7 @@ export interface TrameEvent {
   lon:        number;
   value?:     number;
   threshold?: number;
-  ts:         number;
+  ts:         string | number;
 }
 
 export interface TrameHeartbeat {
@@ -43,7 +43,7 @@ export interface TrameHeartbeat {
   battery:  number;
   rssi?:    number;
   mode:     ModeType;
-  ts:       number;
+  ts:       string | number;
 }
 
 export type Trame = TramePosition | TrameEvent | TrameHeartbeat;

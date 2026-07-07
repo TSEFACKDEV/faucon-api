@@ -37,7 +37,8 @@ CREATE TABLE "refresh_tokens" (
 -- CreateTable
 CREATE TABLE "vehicules" (
     "id" TEXT NOT NULL,
-    "imei" TEXT NOT NULL,
+    "imei" TEXT,
+    "trackerId" TEXT,
     "nom" TEXT NOT NULL,
     "image" TEXT,
     "modeActuel" "ModeFonctionnement" NOT NULL DEFAULT 'MOVE',
@@ -45,7 +46,7 @@ CREATE TABLE "vehicules" (
     "estActif" BOOLEAN NOT NULL DEFAULT true,
     "dateAjout" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "derniereCommunication" TIMESTAMP(3),
-    "utilisateurId" TEXT NOT NULL,
+    "utilisateurId" TEXT,
 
     CONSTRAINT "vehicules_pkey" PRIMARY KEY ("id")
 );
@@ -63,6 +64,8 @@ CREATE TABLE "positions" (
     "hdop" DOUBLE PRECISION,
     "niveauBatterie" INTEGER NOT NULL,
     "statutACC" BOOLEAN NOT NULL,
+    "cyc" INTEGER,
+    "alr" INTEGER,
     "horodatage" TIMESTAMP(3) NOT NULL,
     "dateReception" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -175,6 +178,9 @@ CREATE UNIQUE INDEX "refresh_tokens_token_key" ON "refresh_tokens"("token");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "vehicules_imei_key" ON "vehicules"("imei");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "vehicules_trackerId_key" ON "vehicules"("trackerId");
 
 -- CreateIndex
 CREATE INDEX "vehicules_utilisateurId_idx" ON "vehicules"("utilisateurId");

@@ -1,6 +1,6 @@
 
-import { TramePosition } from '../types/tracker.types';
-import { broadcastPosition } from '../tracker/websocket.service';
+import { TramePosition, EventType } from '../types/tracker.types';
+import { broadcastPosition, broadcastAlarm } from '../tracker/websocket.service';
 import { checkGeofence } from '../tracker/geofence.checker';
 import { checkSpeedLimit } from '../tracker/speed.checker';
 import { prisma } from '../config/database';
@@ -63,8 +63,14 @@ export const handlePositionPayload = async (
 
     // 4. Vérifications asynchrones (ne bloquent pas la réponse au traceur)
     checkGeofence(vehiculeId, payload.latitude, payload.longitude).catch(console.error);
-    checkSpeedLimit(vehiculeId, payload.vitesse).catch(console.error);
-    checkBatteryLevel(vehiculeId, payload.battery).catch(console.error);
+    checkSpeedLimit(vehiculeId, payload.vitesse, payload.latitude, payload.longitude).catch(console.error);
+    checkBatteryLevel(vehiculeId, payload.battery, payload.latitude, payload.longitude).catch(console.error);
+
+    // 5. Événement transmis par les canaux HTTP/SMS (le canal TCP passe par
+    // une trame EVENT dédiée, gérée par event.handler.ts).
+    if (payload.eventType && payload.source !== 'tcp') {
+      await recordEventAlarm(vehiculeId, payload.eventType as EventType, payload.latitude, payload.longitude, payload.timestamp);
+    }
 
     console.log(`[POSITION] ${vehiculeId} → lat:${payload.latitude} lon:${payload.longitude} speed:${payload.vitesse}km/h source:${payload.source}`);
   } catch (err) {
@@ -88,7 +94,12 @@ export const handlePosition = async (
   });
 };
 
-const checkBatteryLevel = async (vehiculeId: string, battery: number): Promise<void> => {
+const checkBatteryLevel = async (
+  vehiculeId: string,
+  battery: number,
+  latitude: number,
+  longitude: number
+): Promise<void> => {
   if (battery > 20) return;
 
   const vehicule = await prisma.vehicule.findUnique({
@@ -107,8 +118,8 @@ const checkBatteryLevel = async (vehiculeId: string, battery: number): Promise<v
     data: {
       vehiculeId,
       typeAlarme:    'BATTERIE_FAIBLE',
-      latitude:      0,
-      longitude:     0,
+      latitude,
+      longitude,
       valeurMesuree: battery,
       seuilConfigure: 20,
       horodatage:    new Date(),
@@ -116,4 +127,31 @@ const checkBatteryLevel = async (vehiculeId: string, battery: number): Promise<v
   });
 
   console.warn(`[ALARM] BATTERIE_FAIBLE — ${vehiculeId} — ${battery}%`);
+};
+
+/**
+ * Persiste et diffuse une alarme reçue via un canal qui ne transporte pas
+ * de trame EVENT dédiée (HTTP webhook, SMS).
+ */
+const recordEventAlarm = async (
+  vehiculeId: string,
+  typeAlarme: EventType,
+  latitude: number,
+  longitude: number,
+  horodatage: Date
+): Promise<void> => {
+  const alarme = await prisma.alarme.create({
+    data: { vehiculeId, typeAlarme, latitude, longitude, horodatage },
+  });
+
+  broadcastAlarm(vehiculeId, {
+    id: alarme.id,
+    vehiculeId,
+    typeAlarme,
+    latitude,
+    longitude,
+    horodatage: alarme.horodatage.toISOString(),
+  });
+
+  console.warn(`[ALARM] ${typeAlarme} — ${vehiculeId} (source événement)`);
 };
