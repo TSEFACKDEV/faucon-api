@@ -1,0 +1,25 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const vehicle_controller_1 = require("../controllers/vehicle.controller");
+const auth_middleware_1 = require("../middlewares/auth.middleware");
+const router = (0, express_1.Router)();
+// Toutes les routes véhicules sont protégées
+router.use(auth_middleware_1.protect);
+router.post('/connect', vehicle_controller_1.vehicleController.addVehicle);
+router.post('/', vehicle_controller_1.vehicleController.addVehicle);
+router.get('/', vehicle_controller_1.vehicleController.getVehicles);
+router.get('/:id', vehicle_controller_1.vehicleController.getVehicleById);
+router.put('/:id', vehicle_controller_1.vehicleController.updateVehicle);
+router.delete('/:id', vehicle_controller_1.vehicleController.deleteVehicle);
+router.put('/:id/speed-limit', vehicle_controller_1.vehicleController.setSpeedLimit);
+router.put('/:id/geofence', vehicle_controller_1.vehicleController.setGeofence);
+router.put('/:id/mode', vehicle_controller_1.vehicleController.setMode);
+router.get('/:id/position/last', vehicle_controller_1.vehicleController.getLastPosition);
+router.get('/:id/replay', vehicle_controller_1.vehicleController.getReplay);
+router.get('/:id/position/history', vehicle_controller_1.vehicleController.getPositionHistory);
+router.get('/:id/report/daily', vehicle_controller_1.vehicleController.getDailyReport);
+router.get('/:id/alarmes', vehicle_controller_1.vehicleController.getAlarmes);
+router.patch('/:id/alarmes/:alarmeId/acquit', vehicle_controller_1.vehicleController.acquitAlarme);
+router.post('/:id/report/generate', vehicle_controller_1.vehicleController.generateReport);
+exports.default = router;
