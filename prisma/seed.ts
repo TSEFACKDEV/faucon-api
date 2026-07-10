@@ -29,12 +29,15 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 // Password : User2026!
 // UserName : TEST USER
 //
-// DISPOSITIFS ENREGISTRÉS
+// DISPOSITIFS ENREGISTRÉS (déjà réclamés, aucun PIN requis)
 // TRACKER-001 → Container Nord  — IMEI: 358000000000421
 // TRACKER-002 → Container Sud   — IMEI: 358000000000518
 // TRACKER-003 → Container Est   — IMEI: 358000000000733
 // TRACKER-004 → Container Ouest — IMEI: 358000000000821
-// TRACKER-005 → Traceur non assigné — IMEI: 358000000000999
+//
+// DISPOSITIFS PROVISIONNÉS NON RÉCLAMÉS (PIN requis pour /vehicles/connect)
+// TRACKER-005 → IMEI: 358000000000999 — PIN: K7M2QX
+// FCN-9001    → traceur "sortie d'usine", aucune position — PIN: P9X3TR
 //
 // TCP TEST (netcat localhost 5000) :
 // Copier les trames depuis la section TCP ci-dessous
@@ -223,11 +226,15 @@ async function main() {
     },
   });
 
+  // ─── VÉHICULE 5 — provisionné, jamais réclamé (a déjà transmis) ──
+  // Simule un traceur vendu, allumé au moins une fois, mais pas encore
+  // rattaché à un compte : pinActivation exigé par vehicleService.addVehicle.
   const v5 = await prisma.vehicule.create({
     data: {
       id:             'veh-005-tracker-non-assigne',
       imei:           '358000000000999',
       trackerId:      'TRACKER-005',
+      pinActivation:  'K7M2QX',
       nom:            'Traceur non assigné',
       modeActuel:     'STANDBY',
       niveauBatterie: 100,
@@ -237,9 +244,27 @@ async function main() {
     },
   });
 
-  console.log('✓ 4 véhicules créés avec limites et géorepérages');
+  // ─── VÉHICULE 6 — fraîchement provisionné, jamais allumé ─────────
+  // Représente le résultat direct de POST /admin/vehicules/provision :
+  // aucune position, aucune communication, juste trackerId + PIN en attente
+  // de flashage/vente. Sert à tester le flux de claim de bout en bout.
+  const v6 = await prisma.vehicule.create({
+    data: {
+      id:             'veh-006-fcn-9001-neuf',
+      trackerId:      'FCN-9001',
+      pinActivation:  'P9X3TR',
+      nom:            'Traceur FCN-9001',
+      modeActuel:     'MOVE',
+      niveauBatterie: 100,
+      estActif:       false,
+      utilisateurId:  null,
+      derniereCommunication: null,
+    },
+  });
 
-  console.log(`✓ Traceur pré-enregistré disponible pour revendication : ${v5.trackerId}`);
+  console.log('✓ 4 véhicules créés avec limites et géorepérages');
+  console.log(`✓ Traceur pré-enregistré disponible pour revendication : ${v5.trackerId} (PIN ${v5.pinActivation})`);
+  console.log(`✓ Traceur "sortie d'usine" jamais allumé : ${v6.trackerId} (PIN ${v6.pinActivation})`);
 
   // ─── POSITIONS — Container Nord (trajet Douala port) ─────────
   // Trajet : Port Autonome de Douala → Zone Logistique Bonabéri
@@ -665,12 +690,14 @@ async function main() {
   console.log('  Email    : admin@faucon.cm');
   console.log('  Password : Faucon2025!');
   console.log('  DeviceID : TRACKER-001 (pour le champ ID Dispositif)');
-  console.log('\n  VÉHICULES :');
+  console.log('\n  VÉHICULES DÉJÀ RÉCLAMÉS :');
   console.log('  Container Nord  → IMEI: 358000000000421 | Batterie: 82% | Mode: WORK');
   console.log('  Container Sud   → IMEI: 358000000000518 | Batterie: 47% | Mode: MOVE');
   console.log('  Container Est   → IMEI: 358000000000733 | Batterie: 12% | Mode: STANDBY ⚠️');
   console.log('  Container Ouest → IMEI: 358000000000821 | Batterie: 65% | Mode: MOVE');
-  console.log('  Traceur non assigné → TRACKER-005 / IMEI: 358000000000999');
+  console.log('\n  VÉHICULES PROVISIONNÉS, NON RÉCLAMÉS (pour tester /vehicles/connect avec PIN) :');
+  console.log(`  ${v5.trackerId} (a déjà transmis)    → PIN: ${v5.pinActivation}`);
+  console.log(`  ${v6.trackerId} (jamais allumé)      → PIN: ${v6.pinActivation}`);
   console.log('\n  ALARMES NON ACQUITTÉES :');
   console.log('  - Container Est  → DECOLLEMENT_TRACEUR (11:04)');
   console.log('  - Container Est  → BATTERIE_FAIBLE 12% (10:47)');
@@ -689,6 +716,9 @@ async function main() {
 
 // Exemple utilisant `trackerId` (tel que renvoyé par le firmware corrigé)
 // {"type":"POSITION","trackerId":"FCN-0733","ts":"2026-07-03T07:30:00Z","lat":4.0360,"lon":9.7622,"speed":38,"cap":52,"battery":12}
+//
+// Premiere transmission d'un traceur "sortie d'usine" (FCN-9001, voir v6) :
+// {"type":"POSITION","trackerId":"FCN-9001","ts":"2026-07-10T09:00:00Z","lat":4.0511,"lon":9.7679,"speed":0,"cap":0,"battery":100,"acc":true}
 //
 // Exemple de webhook HTTP :
 // POST /api/tracker/webhook?id=358000000000421&lat=4.0511&lon=9.7679&bat=84&spd=0&cap=0&ts=2026-07-03T09:55:00Z
