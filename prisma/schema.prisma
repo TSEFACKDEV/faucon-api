@@ -70,6 +70,7 @@ model Vehicule {
   id                    String             @id @default(uuid())
   imei                  String?            @unique
   trackerId             String?            @unique
+  pinActivation         String?
   nom                   String
   image                 String?
   modeActuel            ModeFonctionnement @default(MOVE)

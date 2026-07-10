@@ -13,6 +13,7 @@ interface PositionPayload {
   battery: number;
   timestamp: Date;
   source: 'http' | 'sms' | 'tcp';
+  acc?: boolean;
   eventType?: string;
   cycleNumber?: number;
   alertCount?: number;
@@ -32,7 +33,7 @@ export const handlePositionPayload = async (
         vitesse:       payload.vitesse,
         cap:           payload.cap,
         niveauBatterie: payload.battery,
-        statutACC:     false,
+        statutACC:     payload.acc ?? false,
         cyc:           payload.cycleNumber,
         alr:           payload.alertCount,
         horodatage:    payload.timestamp,
@@ -91,6 +92,7 @@ export const handlePosition = async (
     battery: trame.battery,
     timestamp: new Date(trame.ts),
     source: 'tcp',
+    acc: trame.acc,
   });
 };
 

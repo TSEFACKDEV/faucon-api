@@ -19,9 +19,12 @@ export const vehicleController = {
       const rawIdentifier = req.body.imei ?? req.body.deviceId ?? req.body.id ?? req.body.trackerId;
       const rawNom = req.body.nom ?? req.body.deviceName;
       const nom = rawNom ?? `Dispositif ${String(rawIdentifier ?? '').slice(-4)}`;
+      const pin = req.body.pin ?? req.body.pinActivation;
 
       if (!rawIdentifier) return sendError(res, 'Identifiant du traceur requis', 400);
-      const vehicle = await vehicleService.addVehicle(req.user!.id, String(rawIdentifier), String(nom));
+      const vehicle = await vehicleService.addVehicle(
+        req.user!.id, String(rawIdentifier), String(nom), pin ? String(pin) : undefined
+      );
       return sendSuccess(res, 'Appareil ajouté', vehicle, 201);
     } catch (err: any) {
       return sendError(res, err.message, err.statusCode ?? 400);

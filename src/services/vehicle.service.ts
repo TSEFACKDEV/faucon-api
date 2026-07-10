@@ -4,7 +4,7 @@ import { findVehiculeByIdentifier } from './vehicle-lookup.service';
 
 export const vehicleService = {
 
-  addVehicle: async (utilisateurId: string, identifier: string, nom: string) => {
+  addVehicle: async (utilisateurId: string, identifier: string, nom: string, pin?: string) => {
     const existing = await findVehiculeByIdentifier(identifier);
 
     if (!existing) {
@@ -13,6 +13,16 @@ export const vehicleService = {
 
     if (existing.utilisateurId && existing.utilisateurId !== utilisateurId) {
       throw new AppError('Ce traceur est déjà connecté à un autre compte.', 409);
+    }
+
+    // Le PIN n'est exigé qu'au moment du premier rattachement (le traceur
+    // n'a pas encore de propriétaire) — un traceur provisionné en série a
+    // toujours un pinActivation ; les anciens traceurs de démo/seed n'en ont
+    // pas et restent réclamables sans PIN.
+    if (!existing.utilisateurId && existing.pinActivation) {
+      if (!pin || pin.toUpperCase() !== existing.pinActivation) {
+        throw new AppError('Code d’activation invalide. Vérifiez le PIN imprimé sur le boîtier.', 400);
+      }
     }
 
     const updateData: any = {
