@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { sendError, sendSuccess } from '../utils/response';
 import { handlePositionPayload } from '../tracker/position.handler';
 import { findVehiculeByIdentifier } from '../services/vehicle-lookup.service';
+import { isValidCoord, isValidSpeed, isValidBattery } from '../tracker/trame.validator';
 
 const router = Router();
 
@@ -116,9 +117,20 @@ router.post('/webhook', async (req, res) => {
     const evt = req.query.evt;
     const cyc = parseNumber(req.query.cyc);
     const alr = parseNumber(req.query.alr);
+    const value = parseNumber(req.query.value);
+    const threshold = parseNumber(req.query.threshold);
 
     if (!id || lat === null || lon === null || bat === null) {
       return sendError(res, 'Paramètres webhook incomplets', 400);
+    }
+    if (!isValidCoord(lat, lon)) {
+      return sendError(res, `Coordonnées invalides : ${lat}, ${lon}`, 400);
+    }
+    if (!isValidBattery(bat)) {
+      return sendError(res, `Batterie invalide : ${bat}`, 400);
+    }
+    if (speed !== null && !isValidSpeed(speed)) {
+      return sendError(res, `Vitesse invalide : ${speed}`, 400);
     }
 
     const device = await findVehiculeByIdentifier(String(id));
@@ -136,6 +148,8 @@ router.post('/webhook', async (req, res) => {
       timestamp: parseTimestampParam(req.query.ts),
       source: 'http',
       eventType: mapTrackerEvent(evt),
+      eventValue: value ?? undefined,
+      eventThreshold: threshold ?? undefined,
       cycleNumber: cyc ?? undefined,
       alertCount: alr ?? undefined,
     });

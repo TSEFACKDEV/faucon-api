@@ -15,6 +15,8 @@ interface PositionPayload {
   source: 'http' | 'sms' | 'tcp';
   acc?: boolean;
   eventType?: string;
+  eventValue?: number;
+  eventThreshold?: number;
   cycleNumber?: number;
   alertCount?: number;
 }
@@ -70,7 +72,10 @@ export const handlePositionPayload = async (
     // 5. Événement transmis par les canaux HTTP/SMS (le canal TCP passe par
     // une trame EVENT dédiée, gérée par event.handler.ts).
     if (payload.eventType && payload.source !== 'tcp') {
-      await recordEventAlarm(vehiculeId, payload.eventType as EventType, payload.latitude, payload.longitude, payload.timestamp);
+      await recordEventAlarm(
+        vehiculeId, payload.eventType as EventType, payload.latitude, payload.longitude,
+        payload.timestamp, payload.eventValue, payload.eventThreshold
+      );
     }
 
     console.log(`[POSITION] ${vehiculeId} → lat:${payload.latitude} lon:${payload.longitude} speed:${payload.vitesse}km/h source:${payload.source}`);
@@ -140,10 +145,12 @@ const recordEventAlarm = async (
   typeAlarme: EventType,
   latitude: number,
   longitude: number,
-  horodatage: Date
+  horodatage: Date,
+  valeurMesuree?: number,
+  seuilConfigure?: number
 ): Promise<void> => {
   const alarme = await prisma.alarme.create({
-    data: { vehiculeId, typeAlarme, latitude, longitude, horodatage },
+    data: { vehiculeId, typeAlarme, latitude, longitude, horodatage, valeurMesuree, seuilConfigure },
   });
 
   broadcastAlarm(vehiculeId, {
