@@ -4,6 +4,7 @@ const express_1 = require("express");
 const response_1 = require("../utils/response");
 const position_handler_1 = require("../tracker/position.handler");
 const vehicle_lookup_service_1 = require("../services/vehicle-lookup.service");
+const trame_validator_1 = require("../tracker/trame.validator");
 const router = (0, express_1.Router)();
 const parseNumber = (value) => {
     if (value === undefined || value === null || value === '')
@@ -106,8 +107,19 @@ router.post('/webhook', async (req, res) => {
         const evt = req.query.evt;
         const cyc = parseNumber(req.query.cyc);
         const alr = parseNumber(req.query.alr);
+        const value = parseNumber(req.query.value);
+        const threshold = parseNumber(req.query.threshold);
         if (!id || lat === null || lon === null || bat === null) {
             return (0, response_1.sendError)(res, 'Paramètres webhook incomplets', 400);
+        }
+        if (!(0, trame_validator_1.isValidCoord)(lat, lon)) {
+            return (0, response_1.sendError)(res, `Coordonnées invalides : ${lat}, ${lon}`, 400);
+        }
+        if (!(0, trame_validator_1.isValidBattery)(bat)) {
+            return (0, response_1.sendError)(res, `Batterie invalide : ${bat}`, 400);
+        }
+        if (speed !== null && !(0, trame_validator_1.isValidSpeed)(speed)) {
+            return (0, response_1.sendError)(res, `Vitesse invalide : ${speed}`, 400);
         }
         const device = await (0, vehicle_lookup_service_1.findVehiculeByIdentifier)(String(id));
         if (!device) {
@@ -122,6 +134,8 @@ router.post('/webhook', async (req, res) => {
             timestamp: parseTimestampParam(req.query.ts),
             source: 'http',
             eventType: mapTrackerEvent(evt),
+            eventValue: value ?? undefined,
+            eventThreshold: threshold ?? undefined,
             cycleNumber: cyc ?? undefined,
             alertCount: alr ?? undefined,
         });

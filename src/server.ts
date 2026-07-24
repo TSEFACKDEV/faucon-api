@@ -11,6 +11,7 @@ import adminRoutes    from './routes/admin.routes';
 import { errorHandler, notFound } from './middlewares/error.middleware';
 import { initWebSocket }  from './tracker/websocket.service';
 import { startTcpServer } from './tracker/tcp.server';
+import { startMqttClient } from './tracker/mqtt.client';
 import { startCronJobs }  from './cron/scheduler';
 import { corsOrigins } from './config/cors';
 
@@ -19,6 +20,14 @@ for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
     throw new Error(`Variable d'environnement ${key} manquante — arrêt du serveur.`);
   }
 }
+
+// Position.id est un BigInt (Prisma) — JSON.stringify ne sait pas le
+// sérialiser nativement. Fix global plutôt qu'au cas par cas : tout endpoint
+// qui renvoie une ligne Position (position/last, historique, replay) sinon
+// échoue avec "Do not know how to serialize a BigInt".
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
 
 const app        = express();
 const httpServer = http.createServer(app);
@@ -49,6 +58,7 @@ app.use(errorHandler);
 
 initWebSocket(httpServer);
 startTcpServer();
+startMqttClient();
 startCronJobs();
 
 httpServer.listen(PORT, () => {

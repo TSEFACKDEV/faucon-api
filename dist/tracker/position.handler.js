@@ -49,7 +49,7 @@ const handlePositionPayload = async (vehiculeId, payload) => {
         // 5. Événement transmis par les canaux HTTP/SMS (le canal TCP passe par
         // une trame EVENT dédiée, gérée par event.handler.ts).
         if (payload.eventType && payload.source !== 'tcp') {
-            await recordEventAlarm(vehiculeId, payload.eventType, payload.latitude, payload.longitude, payload.timestamp);
+            await recordEventAlarm(vehiculeId, payload.eventType, payload.latitude, payload.longitude, payload.timestamp, payload.eventValue, payload.eventThreshold);
         }
         console.log(`[POSITION] ${vehiculeId} → lat:${payload.latitude} lon:${payload.longitude} speed:${payload.vitesse}km/h source:${payload.source}`);
     }
@@ -103,9 +103,9 @@ const checkBatteryLevel = async (vehiculeId, battery, latitude, longitude) => {
  * Persiste et diffuse une alarme reçue via un canal qui ne transporte pas
  * de trame EVENT dédiée (HTTP webhook, SMS).
  */
-const recordEventAlarm = async (vehiculeId, typeAlarme, latitude, longitude, horodatage) => {
+const recordEventAlarm = async (vehiculeId, typeAlarme, latitude, longitude, horodatage, valeurMesuree, seuilConfigure) => {
     const alarme = await database_1.prisma.alarme.create({
-        data: { vehiculeId, typeAlarme, latitude, longitude, horodatage },
+        data: { vehiculeId, typeAlarme, latitude, longitude, horodatage, valeurMesuree, seuilConfigure },
     });
     (0, websocket_service_1.broadcastAlarm)(vehiculeId, {
         id: alarme.id,

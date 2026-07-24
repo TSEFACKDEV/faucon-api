@@ -12,7 +12,7 @@ interface PositionPayload {
   cap: number;
   battery: number;
   timestamp: Date;
-  source: 'http' | 'sms' | 'tcp';
+  source: 'http' | 'sms' | 'tcp' | 'mqtt';
   acc?: boolean;
   eventType?: string;
   eventValue?: number;

@@ -16,6 +16,7 @@ const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
 const error_middleware_1 = require("./middlewares/error.middleware");
 const websocket_service_1 = require("./tracker/websocket.service");
 const tcp_server_1 = require("./tracker/tcp.server");
+const mqtt_client_1 = require("./tracker/mqtt.client");
 const scheduler_1 = require("./cron/scheduler");
 const cors_2 = require("./config/cors");
 for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
@@ -23,6 +24,13 @@ for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
         throw new Error(`Variable d'environnement ${key} manquante — arrêt du serveur.`);
     }
 }
+// Position.id est un BigInt (Prisma) — JSON.stringify ne sait pas le
+// sérialiser nativement. Fix global plutôt qu'au cas par cas : tout endpoint
+// qui renvoie une ligne Position (position/last, historique, replay) sinon
+// échoue avec "Do not know how to serialize a BigInt".
+BigInt.prototype.toJSON = function () {
+    return this.toString();
+};
 const app = (0, express_1.default)();
 const httpServer = http_1.default.createServer(app);
 const PORT = Number(process.env.PORT ?? 3000);
@@ -48,6 +56,7 @@ app.use(error_middleware_1.notFound);
 app.use(error_middleware_1.errorHandler);
 (0, websocket_service_1.initWebSocket)(httpServer);
 (0, tcp_server_1.startTcpServer)();
+(0, mqtt_client_1.startMqttClient)();
 (0, scheduler_1.startCronJobs)();
 httpServer.listen(PORT, () => {
     console.log(`\n🦅 FAUCON API démarrée sur http://localhost:${PORT}`);

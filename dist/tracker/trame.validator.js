@@ -1,7 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateTrame = void 0;
+exports.validateTrame = exports.isValidBattery = exports.isValidSpeed = exports.isValidCoord = void 0;
+// Exportées pour être réutilisées par les canaux HTTP/SMS (tracker.routes.ts),
+// qui doivent appliquer les mêmes bornes que le canal TCP plutôt que d'avoir
+// leur propre logique de validation divergente.
 const isValidCoord = (lat, lon) => lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+exports.isValidCoord = isValidCoord;
+const isValidSpeed = (speed) => speed >= 0 && speed <= 300;
+exports.isValidSpeed = isValidSpeed;
+const isValidBattery = (battery) => battery >= 0 && battery <= 100;
+exports.isValidBattery = isValidBattery;
 const isValidIdentifier = (id) => /^\d{15}$/.test(id) || /^[A-Z0-9\-]{5,30}$/i.test(id);
 const validateTrame = (trame) => {
     if (!isValidIdentifier(trame.imei)) {
@@ -9,13 +17,13 @@ const validateTrame = (trame) => {
     }
     if (trame.type === 'POSITION') {
         const t = trame;
-        if (!isValidCoord(t.lat, t.lon)) {
+        if (!(0, exports.isValidCoord)(t.lat, t.lon)) {
             return { valid: false, reason: `Coordonnées invalides : ${t.lat}, ${t.lon}` };
         }
-        if (t.speed < 0 || t.speed > 300) {
+        if (!(0, exports.isValidSpeed)(t.speed)) {
             return { valid: false, reason: `Vitesse invalide : ${t.speed}` };
         }
-        if (t.battery < 0 || t.battery > 100) {
+        if (!(0, exports.isValidBattery)(t.battery)) {
             return { valid: false, reason: `Batterie invalide : ${t.battery}` };
         }
     }
@@ -28,7 +36,7 @@ const validateTrame = (trame) => {
         if (!validEvents.includes(t.event)) {
             return { valid: false, reason: `Événement inconnu : ${t.event}` };
         }
-        if (!isValidCoord(t.lat, t.lon)) {
+        if (!(0, exports.isValidCoord)(t.lat, t.lon)) {
             return { valid: false, reason: `Coordonnées invalides` };
         }
     }
