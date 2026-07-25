@@ -24,6 +24,7 @@ router.get('/:id/position/history',           vehicleController.getPositionHisto
 router.get('/:id/report/daily',               vehicleController.getDailyReport);
 router.get('/:id/alarmes',                    vehicleController.getAlarmes);
 router.patch('/:id/alarmes/:alarmeId/acquit', vehicleController.acquitAlarme);
+router.delete('/:id/alarmes/:alarmeId',       vehicleController.deleteAlarme);
 
 router.post('/:id/report/generate', vehicleController.generateReport);
 

@@ -228,4 +228,13 @@ export const vehicleService = {
       data: { estAcquittee: true, dateAcquittement: new Date() },
     });
   },
+
+  deleteAlarme: async (alarmeId: string, utilisateurId: string) => {
+    const alarme = await prisma.alarme.findFirst({
+      where: { id: alarmeId, vehicule: { utilisateurId } },
+    });
+    if (!alarme) throw new NotFoundError('Alarme introuvable');
+
+    await prisma.alarme.delete({ where: { id: alarmeId } });
+  },
 };

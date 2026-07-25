@@ -205,9 +205,21 @@ export const vehicleController = {
     try {
       const alarmeId = getParamId(req.params.alarmeId ?? req.params.id);
       if (!alarmeId) return sendError(res, 'ID de l\'alarme requis', 400);
-      
+
       const alarme = await vehicleService.acquitAlarme(alarmeId, req.user!.id);
       return sendSuccess(res, 'Alarme acquittée', alarme);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
+  deleteAlarme: async (req: AuthRequest, res: Response) => {
+    try {
+      const alarmeId = getParamId(req.params.alarmeId ?? req.params.id);
+      if (!alarmeId) return sendError(res, 'ID de l\'alarme requis', 400);
+
+      await vehicleService.deleteAlarme(alarmeId, req.user!.id);
+      return sendSuccess(res, 'Alarme supprimée');
     } catch (err: any) {
       return sendError(res, err.message, err.statusCode ?? 400);
     }

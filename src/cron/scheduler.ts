@@ -60,6 +60,24 @@ export const startCronJobs = (): void => {
     timezone: 'Africa/Douala',
   });
 
+  // ── NETTOYAGE ALARMES > 24H ──────────────────────────────────────
+  // Toutes les heures (à :15, décalé de la vérif non-mouvement) :
+  // supprime les alarmes dont l'horodatage dépasse 24h, acquittées ou
+  // non — l'historique long terme reste dans les rapports journaliers.
+  cron.schedule('15 * * * *', async () => {
+    console.log('[CRON] 🧹 Nettoyage des alarmes de plus de 24h...');
+    try {
+      const result = await prisma.alarme.deleteMany({
+        where: { horodatage: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      });
+      console.log(`[CRON] ${result.count} alarme(s) de plus de 24h supprimée(s)`);
+    } catch (err) {
+      console.error('[CRON] Erreur nettoyage alarmes :', err);
+    }
+  }, {
+    timezone: 'Africa/Douala',
+  });
+
   console.log('⏰ CRON jobs démarrés (fuseau : Africa/Douala)');
 };
 
