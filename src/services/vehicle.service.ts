@@ -54,7 +54,7 @@ export const vehicleService = {
     return prisma.vehicule.findMany({
       where: { utilisateurId },
       select: {
-        id: true, imei: true, nom: true, image: true,
+        id: true, imei: true, trackerId: true, nom: true, image: true,
         modeActuel: true, niveauBatterie: true, estActif: true,
         derniereCommunication: true,
         limiteVitesse: true,
