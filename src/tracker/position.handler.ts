@@ -9,7 +9,7 @@ interface PositionPayload {
   latitude: number;
   longitude: number;
   vitesse: number;
-  cap: number;
+  cap?: number;
   battery: number;
   timestamp: Date;
   source: 'http' | 'sms' | 'tcp' | 'mqtt';

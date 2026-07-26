@@ -1,6 +1,41 @@
 import {prisma} from '../config/database';
 import { AppError, NotFoundError } from '../utils/errors';
 import { findVehiculeByIdentifier } from './vehicle-lookup.service';
+import { publishCommand } from '../tracker/mqtt.client';
+
+export type CodeCommande = 'LOCALISER' | 'MODE' | 'REDEMARRER' | 'RESET_USINE';
+
+// Crée la commande en base (PENDING) puis la publie sur le topic MQTT du
+// traceur. Si la publication échoue immédiatement (canal MQTT indisponible
+// — cf. `publishCommand` qui renvoie false quand le client n'est pas
+// connecté), on marque tout de suite FAILED plutôt que de laisser la
+// commande PENDING pour toujours : sans ça, seul le cron de nettoyage des
+// commandes expirées la ferait disparaître, des dizaines de minutes plus
+// tard.
+const envoyerCommande = async (
+  vehiculeId: string,
+  trackerId: string,
+  codeCommande: CodeCommande,
+  parametres?: Record<string, unknown>
+) => {
+  const commande = await prisma.commandeDescendante.create({
+    data: { vehiculeId, codeCommande, parametres: parametres as any, statutExecution: 'PENDING' },
+  });
+
+  const envoyee = publishCommand(trackerId, {
+    id: commande.id,
+    cmd: codeCommande,
+    valeur: parametres?.valeur,
+  });
+
+  if (!envoyee) {
+    return prisma.commandeDescendante.update({
+      where: { id: commande.id },
+      data: { statutExecution: 'FAILED', dateReponse: new Date() },
+    });
+  }
+  return commande;
+};
 
 export const vehicleService = {
 
@@ -131,10 +166,50 @@ export const vehicleService = {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
     if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
-    return prisma.vehicule.update({
+    const updated = await prisma.vehicule.update({
       where: { id: vehiculeId },
       data: { modeActuel: mode },
       select: { id: true, modeActuel: true },
+    });
+
+    // Répercute réellement le changement sur le traceur (v10.1) — avant
+    // cette version ce champ n'était qu'une étiquette en base, sans aucun
+    // effet matériel. On ne bloque pas la réponse si le traceur n'a pas
+    // encore d'identifiant MQTT (ex. juste après provisionnement, avant
+    // toute connexion).
+    if (vehicle.trackerId) {
+      await envoyerCommande(vehiculeId, vehicle.trackerId, 'MODE', { valeur: mode });
+    }
+
+    return updated;
+  },
+
+  // Commandes ponctuelles (LOCALISER / REDEMARRER / RESET_USINE) — voir
+  // aussi setMode ci-dessus pour la commande MODE, déclenchée par un champ
+  // dédié existant plutôt que par ce chemin générique.
+  sendCommande: async (
+    vehiculeId: string,
+    utilisateurId: string,
+    codeCommande: CodeCommande,
+    parametres?: Record<string, unknown>
+  ) => {
+    const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
+    if (!vehicle.trackerId) {
+      throw new AppError("Ce traceur n'a pas encore d'identifiant MQTT connu — commande impossible.", 400);
+    }
+
+    return envoyerCommande(vehiculeId, vehicle.trackerId, codeCommande, parametres);
+  },
+
+  getCommandes: async (vehiculeId: string, utilisateurId: string) => {
+    const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
+
+    return prisma.commandeDescendante.findMany({
+      where: { vehiculeId },
+      orderBy: { dateEnvoi: 'desc' },
+      take: 20,
     });
   },
 
@@ -166,6 +241,7 @@ export const vehicleService = {
       select: {
         id: true, latitude: true, longitude: true,
         vitesse: true, cap: true, horodatage: true,
+        niveauBatterie: true, nbSatellites: true, niveauSignal: true,
       },
     });
   },
@@ -193,6 +269,7 @@ export const vehicleService = {
       select: {
         id: true, latitude: true, longitude: true,
         vitesse: true, cap: true, horodatage: true,
+        niveauBatterie: true, nbSatellites: true, niveauSignal: true,
       },
     });
   },

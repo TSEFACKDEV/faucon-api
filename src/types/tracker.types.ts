@@ -17,7 +17,7 @@ export interface TramePosition {
   lon:      number;
   alt?:     number;
   speed:    number;
-  cap:      number;
+  cap?:     number;
   sats?:    number;
   hdop?:    number;
   signal?:  number; // qualité du signal réseau, en % (0-100)

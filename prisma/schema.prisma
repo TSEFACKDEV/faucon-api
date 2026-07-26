@@ -102,7 +102,7 @@ model Position {
   longitude      Float
   altitude       Float?
   vitesse        Float
-  cap            Float
+  cap            Float?
   nbSatellites   Int?
   niveauSignal   Int?
   hdop           Float?

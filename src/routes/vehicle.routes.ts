@@ -18,6 +18,9 @@ router.put('/:id/speed-limit',                vehicleController.setSpeedLimit);
 router.put('/:id/geofence',                   vehicleController.setGeofence);
 router.put('/:id/mode',                       vehicleController.setMode);
 
+router.post('/:id/commandes',                 vehicleController.sendCommande);
+router.get('/:id/commandes',                  vehicleController.getCommandes);
+
 router.get('/:id/position/last',              vehicleController.getLastPosition);
 router.get('/:id/replay',                     vehicleController.getReplay);
 router.get('/:id/position/history',           vehicleController.getPositionHistory);

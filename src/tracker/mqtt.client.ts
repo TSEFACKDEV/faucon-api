@@ -2,6 +2,7 @@ import mqtt, { MqttClient } from 'mqtt';
 import { handlePositionPayload } from './position.handler';
 import { findVehiculeByIdentifier } from '../services/vehicle-lookup.service';
 import { isValidCoord, isValidSpeed, isValidBattery } from './trame.validator';
+import { handleCommandAck } from './command-ack.handler';
 
 // Mêmes codes que les canaux HTTP/SMS — un traceur MQTT envoie donc
 // exactement le même format de champ "evt" (numérique), pas de nouvelle
@@ -20,10 +21,12 @@ let client: MqttClient | null = null;
 // Payload JSON attendu (mêmes champs que le webhook HTTP, en JSON plutôt
 // qu'en query string) :
 //   { "lat":4.09, "lon":9.80, "bat":85, "spd":12.3, "ts":"2026-...",
-//     "sat":8, "sig":72,
+//     "sat":8, "sig":72, "cap":214.9,
 //     "evt":"2", "value":15, "threshold":20 }
-//   sat/sig/evt/value/threshold optionnels — sat = nb satellites GPS captés,
-//   sig = qualité du signal réseau en % (0-100, déjà normalisée par le firmware).
+//   sat/sig/cap/evt/value/threshold optionnels — sat = nb satellites GPS
+//   captés, sig = qualité du signal réseau en % (0-100, déjà normalisée par
+//   le firmware), cap = direction en degrés (0-359.9, absent la plupart du
+//   temps à l'arrêt — le GPS ne peut pas calculer de cap sans déplacement).
 const handleMessage = async (topic: string, payloadBuffer: Buffer): Promise<void> => {
   const trackerId = topic.split('/')[1];
   if (!trackerId) return;
@@ -60,12 +63,13 @@ const handleMessage = async (topic: string, payloadBuffer: Buffer): Promise<void
   const evt = payload.evt !== undefined ? EVENT_CODE_MAP[String(payload.evt)] : undefined;
   const sat = payload.sat !== undefined ? Number(payload.sat) : undefined;
   const sig = payload.sig !== undefined ? Number(payload.sig) : undefined;
+  const cap = payload.cap !== undefined ? Number(payload.cap) : undefined;
 
   await handlePositionPayload(device.id, {
     latitude:  lat,
     longitude: lon,
     vitesse:   spd,
-    cap:       Number(payload.cap ?? 0),
+    cap:       Number.isFinite(cap) ? cap : undefined,
     battery:   bat,
     satellites: Number.isFinite(sat) ? sat : undefined,
     signal:     Number.isFinite(sig) ? sig : undefined,
@@ -77,6 +81,35 @@ const handleMessage = async (topic: string, payloadBuffer: Buffer): Promise<void
   });
 
   console.log(`[MQTT] Position traitée pour ${trackerId} (topic ${topic})`);
+};
+
+// Topic : faucon/<trackerId>/ack — réponse du traceur à une commande
+// descendante (cf. commandTracker.service.ts). Payload attendu :
+//   { "id": "<uuid CommandeDescendante>", "cmd": "...", "ok": true/false,
+//     "detail": "..." }
+const handleAckMessage = async (topic: string, payloadBuffer: Buffer): Promise<void> => {
+  const trackerId = topic.split('/')[1];
+  if (!trackerId) return;
+
+  let payload: any;
+  try {
+    payload = JSON.parse(payloadBuffer.toString());
+  } catch {
+    console.warn(`[MQTT] Accusé de commande JSON invalide pour ${trackerId}`);
+    return;
+  }
+
+  if (!payload.id || typeof payload.id !== 'string') return;
+  await handleCommandAck(payload.id, !!payload.ok, payload.detail ? String(payload.detail) : undefined);
+};
+
+// Publie une commande descendante vers un traceur. Retourne false si le
+// canal MQTT n'est pas connecté (l'appelant doit alors marquer la
+// commande FAILED plutôt que de la laisser PENDING indéfiniment).
+export const publishCommand = (trackerId: string, payload: object): boolean => {
+  if (!client || !client.connected) return false;
+  client.publish(`faucon/${trackerId}/cmd`, JSON.stringify(payload), { qos: 1 });
+  return true;
 };
 
 export const startMqttClient = (): void => {
@@ -99,9 +132,17 @@ export const startMqttClient = (): void => {
       if (err) console.error('[MQTT] Erreur abonnement :', err);
       else console.log('[MQTT] Abonné à faucon/+/data');
     });
+    client!.subscribe('faucon/+/ack', { qos: 1 }, (err) => {
+      if (err) console.error('[MQTT] Erreur abonnement ack :', err);
+      else console.log('[MQTT] Abonné à faucon/+/ack');
+    });
   });
 
   client.on('message', (topic, payloadBuffer) => {
+    if (topic.endsWith('/ack')) {
+      handleAckMessage(topic, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement ack :', err));
+      return;
+    }
     handleMessage(topic, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement :', err));
   });
 

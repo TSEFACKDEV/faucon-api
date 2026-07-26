@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { generateAllReports } from './report.generator';
 import { sendReportNotifications } from './notification.sender';
 import {prisma} from '../config/database'; // Import statique corrigé
+import { broadcastCommandUpdate } from '../tracker/websocket.service';
 
 /**
  * Lance tous les CRON jobs de l'application
@@ -73,6 +74,36 @@ export const startCronJobs = (): void => {
       console.log(`[CRON] ${result.count} alarme(s) de plus de 24h supprimée(s)`);
     } catch (err) {
       console.error('[CRON] Erreur nettoyage alarmes :', err);
+    }
+  }, {
+    timezone: 'Africa/Douala',
+  });
+
+  // ── COMMANDES DESCENDANTES EXPIRÉES ─────────────────────────────
+  // Toutes les minutes : une commande envoyée au traceur qui n'a reçu
+  // aucun accusé (module éteint, hors réseau, message perdu — cf. les
+  // limites documentées dans traiterCommandeEntrante côté firmware) ne
+  // doit pas rester PENDING indéfiniment dans l'app.
+  cron.schedule('* * * * *', async () => {
+    try {
+      const expirees = await prisma.commandeDescendante.findMany({
+        where: {
+          statutExecution: 'PENDING',
+          dateEnvoi: { lt: new Date(Date.now() - 2 * 60 * 1000) },
+        },
+      });
+      if (expirees.length === 0) return;
+
+      for (const commande of expirees) {
+        const updated = await prisma.commandeDescendante.update({
+          where: { id: commande.id },
+          data: { statutExecution: 'TIMEOUT', dateReponse: new Date() },
+        });
+        broadcastCommandUpdate(commande.vehiculeId, updated);
+      }
+      console.log(`[CRON] ${expirees.length} commande(s) descendante(s) expirée(s)`);
+    } catch (err) {
+      console.error('[CRON] Erreur nettoyage commandes :', err);
     }
   }, {
     timezone: 'Africa/Douala',

@@ -126,6 +126,41 @@ export const vehicleController = {
     }
   },
 
+  sendCommande: async (req: AuthRequest, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID du véhicule requis', 400);
+
+      const { codeCommande, valeur } = req.body;
+      const codesValides = ['LOCALISER', 'MODE', 'REDEMARRER', 'RESET_USINE'];
+      if (!codesValides.includes(codeCommande)) {
+        return sendError(res, `Commande invalide (${codesValides.join(' | ')})`, 400);
+      }
+      if (codeCommande === 'MODE' && !['WORK', 'MOVE', 'STANDBY'].includes(valeur)) {
+        return sendError(res, 'Mode invalide (WORK | MOVE | STANDBY)', 400);
+      }
+
+      const commande = await vehicleService.sendCommande(
+        id, req.user!.id, codeCommande, valeur !== undefined ? { valeur } : undefined
+      );
+      return sendSuccess(res, 'Commande envoyée', commande, 201);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
+  getCommandes: async (req: AuthRequest, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID du véhicule requis', 400);
+
+      const commandes = await vehicleService.getCommandes(id, req.user!.id);
+      return sendSuccess(res, 'Commandes récupérées', commandes);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
   getLastPosition: async (req: AuthRequest, res: Response) => {
     try {
       const id = getParamId(req.params.id);

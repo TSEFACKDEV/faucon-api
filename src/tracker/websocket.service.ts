@@ -63,3 +63,11 @@ export const broadcastAlarm = (vehiculeId: string, data: object): void => {
   if (!io) return;
   io.to(`vehicle:${vehiculeId}`).emit('alarm', data);
 };
+
+// Notifie l'app mobile qu'une commande descendante (LOCALISER, MODE,
+// REDEMARRER, RESET_USINE...) vient de changer de statut — envoyée,
+// exécutée par le traceur, ou expirée.
+export const broadcastCommandUpdate = (vehiculeId: string, data: object): void => {
+  if (!io) return;
+  io.to(`vehicle:${vehiculeId}`).emit('commande_update', data);
+};

@@ -6,7 +6,6 @@ import morgan from 'morgan';
 import authRoutes    from './routes/auth.routes';
 import vehicleRoutes from './routes/vehicle.routes';
 import trackerRoutes from './routes/tracker.routes';
-import trackerTestRoutes from './routes/tracker.test.routes';
 import adminRoutes    from './routes/admin.routes';
 import { errorHandler, notFound } from './middlewares/error.middleware';
 import { initWebSocket }  from './tracker/websocket.service';
@@ -50,7 +49,6 @@ app.get('/version', (_, res) => {
 app.use('/auth',     authRoutes);
 app.use('/vehicles', vehicleRoutes);
 app.use('/tracker',  trackerRoutes);
-app.use('/test', trackerTestRoutes);
 app.use('/admin', adminRoutes);
 
 app.use(notFound);
