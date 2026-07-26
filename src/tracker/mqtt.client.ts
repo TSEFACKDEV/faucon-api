@@ -20,7 +20,10 @@ let client: MqttClient | null = null;
 // Payload JSON attendu (mêmes champs que le webhook HTTP, en JSON plutôt
 // qu'en query string) :
 //   { "lat":4.09, "lon":9.80, "bat":85, "spd":12.3, "ts":"2026-...",
-//     "evt":"2", "value":15, "threshold":20 }   // evt/value/threshold optionnels
+//     "sat":8, "sig":72,
+//     "evt":"2", "value":15, "threshold":20 }
+//   sat/sig/evt/value/threshold optionnels — sat = nb satellites GPS captés,
+//   sig = qualité du signal réseau en % (0-100, déjà normalisée par le firmware).
 const handleMessage = async (topic: string, payloadBuffer: Buffer): Promise<void> => {
   const trackerId = topic.split('/')[1];
   if (!trackerId) return;
@@ -55,6 +58,8 @@ const handleMessage = async (topic: string, payloadBuffer: Buffer): Promise<void
   }
 
   const evt = payload.evt !== undefined ? EVENT_CODE_MAP[String(payload.evt)] : undefined;
+  const sat = payload.sat !== undefined ? Number(payload.sat) : undefined;
+  const sig = payload.sig !== undefined ? Number(payload.sig) : undefined;
 
   await handlePositionPayload(device.id, {
     latitude:  lat,
@@ -62,6 +67,8 @@ const handleMessage = async (topic: string, payloadBuffer: Buffer): Promise<void
     vitesse:   spd,
     cap:       Number(payload.cap ?? 0),
     battery:   bat,
+    satellites: Number.isFinite(sat) ? sat : undefined,
+    signal:     Number.isFinite(sig) ? sig : undefined,
     timestamp: ts,
     source:    'mqtt',
     eventType: evt,

@@ -119,6 +119,8 @@ router.post('/webhook', async (req, res) => {
     const alr = parseNumber(req.query.alr);
     const value = parseNumber(req.query.value);
     const threshold = parseNumber(req.query.threshold);
+    const sat = parseNumber(req.query.sat);
+    const sig = parseNumber(req.query.sig);
 
     if (!id || lat === null || lon === null || bat === null) {
       return sendError(res, 'Paramètres webhook incomplets', 400);
@@ -145,6 +147,8 @@ router.post('/webhook', async (req, res) => {
       vitesse: speed ?? 0,
       cap: cap ?? 0,
       battery: bat,
+      satellites: sat ?? undefined,
+      signal: sig ?? undefined,
       timestamp: parseTimestampParam(req.query.ts),
       source: 'http',
       eventType: mapTrackerEvent(evt),

@@ -20,6 +20,7 @@ export interface TramePosition {
   cap:      number;
   sats?:    number;
   hdop?:    number;
+  signal?:  number; // qualité du signal réseau, en % (0-100)
   battery:  number;
   acc:      boolean;
   network?: NetworkType;

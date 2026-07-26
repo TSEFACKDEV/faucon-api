@@ -14,6 +14,8 @@ interface PositionPayload {
   timestamp: Date;
   source: 'http' | 'sms' | 'tcp' | 'mqtt';
   acc?: boolean;
+  satellites?: number; // nombre de satellites GPS captés
+  signal?: number;     // qualité du signal réseau, en % (0-100)
   eventType?: string;
   eventValue?: number;
   eventThreshold?: number;
@@ -34,6 +36,8 @@ export const handlePositionPayload = async (
         longitude:     payload.longitude,
         vitesse:       payload.vitesse,
         cap:           payload.cap,
+        nbSatellites:  payload.satellites,
+        niveauSignal:  payload.signal,
         niveauBatterie: payload.battery,
         statutACC:     payload.acc ?? false,
         cyc:           payload.cycleNumber,
@@ -59,6 +63,8 @@ export const handlePositionPayload = async (
       vitesse:   payload.vitesse,
       cap:       payload.cap,
       battery:   payload.battery,
+      satellites: payload.satellites,
+      signal:    payload.signal,
       horodatage: payload.timestamp.toISOString(),
       source:    payload.source,
       eventType: payload.eventType,
@@ -95,6 +101,8 @@ export const handlePosition = async (
     vitesse: trame.speed,
     cap: trame.cap,
     battery: trame.battery,
+    satellites: trame.sats,
+    signal: trame.signal,
     timestamp: new Date(trame.ts),
     source: 'tcp',
     acc: trame.acc,

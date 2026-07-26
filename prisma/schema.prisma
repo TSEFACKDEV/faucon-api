@@ -104,6 +104,7 @@ model Position {
   vitesse        Float
   cap            Float
   nbSatellites   Int?
+  niveauSignal   Int?
   hdop           Float?
   niveauBatterie Int
   statutACC      Boolean
