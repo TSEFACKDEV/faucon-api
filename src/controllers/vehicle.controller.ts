@@ -126,6 +126,22 @@ export const vehicleController = {
     }
   },
 
+  setPhoneAlerte: async (req: AuthRequest, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID du véhicule requis', 400);
+
+      const { telephone } = req.body;
+      if (!telephone || typeof telephone !== 'string') {
+        return sendError(res, 'Numéro de téléphone requis', 400);
+      }
+      const result = await vehicleService.setPhoneAlerte(id, req.user!.id, telephone.trim());
+      return sendSuccess(res, 'Numéro SMS mis à jour', result);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
   sendCommande: async (req: AuthRequest, res: Response) => {
     try {
       const id = getParamId(req.params.id);

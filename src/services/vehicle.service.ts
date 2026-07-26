@@ -3,7 +3,12 @@ import { AppError, NotFoundError } from '../utils/errors';
 import { findVehiculeByIdentifier } from './vehicle-lookup.service';
 import { publishCommand } from '../tracker/mqtt.client';
 
-export type CodeCommande = 'LOCALISER' | 'MODE' | 'REDEMARRER' | 'RESET_USINE';
+export type CodeCommande = 'LOCALISER' | 'MODE' | 'REDEMARRER' | 'RESET_USINE' | 'NUMERO_SMS';
+
+// Format international minimal (+237XXXXXXXXX) — le firmware refait de
+// toute façon sa propre validation avant d'accepter la commande, celle-ci
+// n'est là que pour rejeter les erreurs de saisie évidentes tout de suite.
+const NUMERO_SMS_REGEX = /^\+[1-9]\d{7,14}$/;
 
 // Crée la commande en base (PENDING) puis la publie sur le topic MQTT du
 // traceur. Si la publication échoue immédiatement (canal MQTT indisponible
@@ -91,7 +96,7 @@ export const vehicleService = {
       select: {
         id: true, imei: true, trackerId: true, nom: true, image: true,
         modeActuel: true, niveauBatterie: true, estActif: true,
-        derniereCommunication: true,
+        derniereCommunication: true, telephoneAlerte: true,
         limiteVitesse: true,
         perimetreGeofence: true,
       },
@@ -184,9 +189,33 @@ export const vehicleService = {
     return updated;
   },
 
+  // Numéro qui reçoit les SMS d'alerte envoyés directement par le traceur
+  // (choc, conduite brutale, premier fix...). Même principe que setMode :
+  // écrit en base ET poussé au traceur via une commande MQTT.
+  setPhoneAlerte: async (vehiculeId: string, utilisateurId: string, telephone: string) => {
+    const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
+    if (!NUMERO_SMS_REGEX.test(telephone)) {
+      throw new AppError('Numéro invalide (format attendu : +237XXXXXXXXX)', 400);
+    }
+
+    const updated = await prisma.vehicule.update({
+      where: { id: vehiculeId },
+      data: { telephoneAlerte: telephone },
+      select: { id: true, telephoneAlerte: true },
+    });
+
+    if (vehicle.trackerId) {
+      await envoyerCommande(vehiculeId, vehicle.trackerId, 'NUMERO_SMS', { valeur: telephone });
+    }
+
+    return updated;
+  },
+
   // Commandes ponctuelles (LOCALISER / REDEMARRER / RESET_USINE) — voir
-  // aussi setMode ci-dessus pour la commande MODE, déclenchée par un champ
-  // dédié existant plutôt que par ce chemin générique.
+  // aussi setMode et setPhoneAlerte ci-dessus pour MODE/NUMERO_SMS,
+  // déclenchées par un champ dédié existant plutôt que par ce chemin
+  // générique.
   sendCommande: async (
     vehiculeId: string,
     utilisateurId: string,

@@ -17,6 +17,7 @@ router.delete('/:id',                         vehicleController.deleteVehicle);
 router.put('/:id/speed-limit',                vehicleController.setSpeedLimit);
 router.put('/:id/geofence',                   vehicleController.setGeofence);
 router.put('/:id/mode',                       vehicleController.setMode);
+router.put('/:id/telephone-alerte',           vehicleController.setPhoneAlerte);
 
 router.post('/:id/commandes',                 vehicleController.sendCommande);
 router.get('/:id/commandes',                  vehicleController.getCommandes);

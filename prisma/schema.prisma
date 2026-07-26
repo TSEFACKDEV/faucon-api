@@ -73,6 +73,10 @@ model Vehicule {
   pinActivation         String?
   nom                   String
   image                 String?
+  // Numéro qui reçoit les SMS d'alerte envoyés DIRECTEMENT par le traceur
+  // (indépendant du réseau/backend) — configurable depuis l'app, poussé au
+  // traceur via la commande descendante NUMERO_SMS (cf. vehicle.service.ts).
+  telephoneAlerte       String?
   modeActuel            ModeFonctionnement @default(MOVE)
   niveauBatterie        Int                @default(100)
   estActif              Boolean            @default(true)
