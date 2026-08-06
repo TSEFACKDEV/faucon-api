@@ -5,10 +5,23 @@ import { publishCommand } from '../tracker/mqtt.client';
 
 export type CodeCommande = 'LOCALISER' | 'MODE' | 'REDEMARRER' | 'RESET_USINE' | 'NUMERO_SMS';
 
+// Vérifie l'appartenance du véhicule quand un propriétaire est fourni (app
+// mobile). Sans propriétaire (dashboard admin, rôle ADMIN déjà validé par le
+// middleware), l'accès n'est pas restreint.
+const findOwnedVehicle = (vehiculeId: string, utilisateurId?: string) =>
+  utilisateurId
+    ? prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } })
+    : prisma.vehicule.findUnique({ where: { id: vehiculeId } });
+
+const findOwnedAlarme = (alarmeId: string, utilisateurId?: string) =>
+  utilisateurId
+    ? prisma.alarme.findFirst({ where: { id: alarmeId, vehicule: { utilisateurId } } })
+    : prisma.alarme.findUnique({ where: { id: alarmeId } });
+
 // Format international minimal (+237XXXXXXXXX) — le firmware refait de
 // toute façon sa propre validation avant d'accepter la commande, celle-ci
 // n'est là que pour rejeter les erreurs de saisie évidentes tout de suite.
-const NUMERO_SMS_REGEX = /^\+[1-9]\d{7,14}$/;
+export const NUMERO_SMS_REGEX = /^\+[1-9]\d{7,14}$/;
 
 // Crée la commande en base (PENDING) puis la publie sur le topic MQTT du
 // traceur. Si la publication échoue immédiatement (canal MQTT indisponible
@@ -17,7 +30,7 @@ const NUMERO_SMS_REGEX = /^\+[1-9]\d{7,14}$/;
 // commande PENDING pour toujours : sans ça, seul le cron de nettoyage des
 // commandes expirées la ferait disparaître, des dizaines de minutes plus
 // tard.
-const envoyerCommande = async (
+export const envoyerCommande = async (
   vehiculeId: string,
   trackerId: string,
   codeCommande: CodeCommande,
@@ -138,8 +151,8 @@ export const vehicleService = {
     await prisma.vehicule.delete({ where: { id } });
   },
 
-  setSpeedLimit: async (vehiculeId: string, utilisateurId: string, seuilKmh: number) => {
-    const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+  setSpeedLimit: async (vehiculeId: string, utilisateurId: string | undefined, seuilKmh: number) => {
+    const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
     if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.limiteVitesse.upsert({
@@ -151,13 +164,13 @@ export const vehicleService = {
 
   setGeofence: async (
     vehiculeId: string,
-    utilisateurId: string,
+    utilisateurId: string | undefined,
     nom: string,
     centreLat: number,
     centreLon: number,
     rayonMetres: number
   ) => {
-    const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+    const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
     if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     return prisma.perimetreGeofence.upsert({
@@ -167,8 +180,8 @@ export const vehicleService = {
     });
   },
 
-  setMode: async (vehiculeId: string, utilisateurId: string, mode: 'WORK' | 'MOVE' | 'STANDBY') => {
-    const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+  setMode: async (vehiculeId: string, utilisateurId: string | undefined, mode: 'WORK' | 'MOVE' | 'STANDBY') => {
+    const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
     if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
     const updated = await prisma.vehicule.update({
@@ -192,8 +205,8 @@ export const vehicleService = {
   // Numéro qui reçoit les SMS d'alerte envoyés directement par le traceur
   // (choc, conduite brutale, premier fix...). Même principe que setMode :
   // écrit en base ET poussé au traceur via une commande MQTT.
-  setPhoneAlerte: async (vehiculeId: string, utilisateurId: string, telephone: string) => {
-    const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+  setPhoneAlerte: async (vehiculeId: string, utilisateurId: string | undefined, telephone: string) => {
+    const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
     if (!vehicle) throw new NotFoundError('Véhicule introuvable');
     if (!NUMERO_SMS_REGEX.test(telephone)) {
       throw new AppError('Numéro invalide (format attendu : +237XXXXXXXXX)', 400);
@@ -218,11 +231,11 @@ export const vehicleService = {
   // générique.
   sendCommande: async (
     vehiculeId: string,
-    utilisateurId: string,
+    utilisateurId: string | undefined,
     codeCommande: CodeCommande,
     parametres?: Record<string, unknown>
   ) => {
-    const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+    const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
     if (!vehicle) throw new NotFoundError('Véhicule introuvable');
     if (!vehicle.trackerId) {
       throw new AppError("Ce traceur n'a pas encore d'identifiant MQTT connu — commande impossible.", 400);
@@ -323,10 +336,8 @@ export const vehicleService = {
     });
   },
 
-  acquitAlarme: async (alarmeId: string, utilisateurId: string) => {
-    const alarme = await prisma.alarme.findFirst({
-      where: { id: alarmeId, vehicule: { utilisateurId } },
-    });
+  acquitAlarme: async (alarmeId: string, utilisateurId?: string) => {
+    const alarme = await findOwnedAlarme(alarmeId, utilisateurId);
     if (!alarme) throw new NotFoundError('Alarme introuvable');
 
     return prisma.alarme.update({
@@ -335,10 +346,8 @@ export const vehicleService = {
     });
   },
 
-  deleteAlarme: async (alarmeId: string, utilisateurId: string) => {
-    const alarme = await prisma.alarme.findFirst({
-      where: { id: alarmeId, vehicule: { utilisateurId } },
-    });
+  deleteAlarme: async (alarmeId: string, utilisateurId?: string) => {
+    const alarme = await findOwnedAlarme(alarmeId, utilisateurId);
     if (!alarme) throw new NotFoundError('Alarme introuvable');
 
     await prisma.alarme.delete({ where: { id: alarmeId } });

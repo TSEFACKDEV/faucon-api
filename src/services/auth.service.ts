@@ -16,10 +16,10 @@ export const authService = {
 
     const user = await prisma.utilisateur.create({
       data: { userName, email, motDePasseHash },
-      select: { id: true, userName: true, email: true, dateCreation: true },
+      select: { id: true, userName: true, email: true, role: true, telephone: true, dateCreation: true },
     });
 
-    const payload: JwtPayload = { id: user.id, email: user.email, userName: user.userName };
+    const payload: JwtPayload = { id: user.id, email: user.email, userName: user.userName, role: user.role };
     const accessToken  = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
 
@@ -46,7 +46,7 @@ export const authService = {
       data: { derniereConnexion: new Date() },
     });
 
-    const payload: JwtPayload = { id: user.id, email: user.email, userName: user.userName };
+    const payload: JwtPayload = { id: user.id, email: user.email, userName: user.userName, role: user.role };
     const accessToken  = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
 
@@ -64,7 +64,7 @@ export const authService = {
   me: async (userId: string) => {
     const user = await prisma.utilisateur.findUnique({
       where: { id: userId },
-      select: { id: true, userName: true, email: true, telephone: true, dateCreation: true },
+      select: { id: true, userName: true, email: true, telephone: true, role: true, dateCreation: true },
     });
     if (!user) throw new Error('Utilisateur introuvable');
     return user;
@@ -93,7 +93,7 @@ export const authService = {
         ...(email !== undefined && { email }),
         ...(telephone !== undefined && { telephone }),
       },
-      select: { id: true, userName: true, email: true, telephone: true, dateCreation: true },
+      select: { id: true, userName: true, email: true, telephone: true, role: true, dateCreation: true },
     });
 
     return user;
@@ -117,6 +117,7 @@ export const authService = {
       id: decoded.id,
       email: decoded.email,
       userName: decoded.userName,
+      role: decoded.role,
     });
 
     return { accessToken: newAccessToken };

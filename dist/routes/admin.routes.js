@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const admin_controller_1 = require("../controllers/admin.controller");
+const apiKey_middleware_1 = require("../middlewares/apiKey.middleware");
+const rateLimit_middleware_1 = require("../middlewares/rateLimit.middleware");
+const router = (0, express_1.Router)();
+router.use(apiKey_middleware_1.requireProvisioningKey);
+router.use((0, rateLimit_middleware_1.rateLimit)(30, 15 * 60 * 1000));
+router.post('/vehicules/provision', admin_controller_1.adminController.provisionVehicules);
+exports.default = router;

@@ -58,6 +58,7 @@ async function main() {
       email:          USER_EMAIL,
       motDePasseHash: hash,
       telephone:      USER_TELEPHONE,
+      role:           'ADMIN',
     },
   });
 

@@ -13,6 +13,11 @@ datasource db {
 }
 
 
+enum Role {
+  UTILISATEUR
+  ADMIN
+}
+
 enum ModeFonctionnement {
   WORK
   MOVE
@@ -46,6 +51,7 @@ model Utilisateur {
   email          String    @unique
   motDePasseHash String
   telephone      String?
+  role           Role      @default(UTILISATEUR)
   dateCreation   DateTime  @default(now())
   derniereConnexion DateTime?
 
