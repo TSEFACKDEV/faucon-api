@@ -9,31 +9,100 @@ const position_handler_1 = require("./position.handler");
 const vehicle_lookup_service_1 = require("../services/vehicle-lookup.service");
 const trame_validator_1 = require("./trame.validator");
 const command_ack_handler_1 = require("./command-ack.handler");
-// Mêmes codes que les canaux HTTP/SMS — un traceur MQTT envoie donc
-// exactement le même format de champ "evt" (numérique), pas de nouvelle
-// convention à maintenir.
-const EVENT_CODE_MAP = {
-    '1': 'DECOLLEMENT_TRACEUR',
-    '2': 'BATTERIE_FAIBLE',
-    '3': 'VITESSE_EXCESSIVE',
-    '4': 'SORTIE_ZONE',
-    '5': 'NON_MOUVEMENT',
-};
+const event_codes_1 = require("./event-codes");
 let client = null;
-// Topic attendu : faucon/<trackerId>/data
-// Payload JSON attendu (mêmes champs que le webhook HTTP, en JSON plutôt
-// qu'en query string) :
-//   { "lat":4.09, "lon":9.80, "bat":85, "spd":12.3, "ts":"2026-...",
-//     "sat":8, "sig":72, "cap":214.9,
-//     "evt":"2", "value":15, "threshold":20 }
-//   sat/sig/cap/evt/value/threshold optionnels — sat = nb satellites GPS
-//   captés, sig = qualité du signal réseau en % (0-100, déjà normalisée par
-//   le firmware), cap = direction en degrés (0-359.9, absent la plupart du
-//   temps à l'arrêt — le GPS ne peut pas calculer de cap sans déplacement).
-const handleMessage = async (topic, payloadBuffer) => {
-    const trackerId = topic.split('/')[1];
-    if (!trackerId)
+// ────────────────────────────────────────────────────────────────────────
+// Canal « raw » (ce que publie réellement le firmware, cf. publierBrut dans
+// l'ino) :
+//   topic : faucon/<trackerId>/raw
+//   payload : id;lat;lon;bat;spd;ts;evt;value;threshold;sat;sig;cap
+//
+//   - id          identifiant du traceur (trackerId, ex "FCN-0733")
+//   - lat / lon   coordonnées GPS (degrés décimaux)
+//   - bat         batterie en % (entier)
+//   - spd         vitesse en km/h
+//   - ts          horodatage UTC ISO 8601
+//   - evt         code numérique d'événement (1..5), vide si aucun
+//   - value/threshold  valeurs numériques de l'événement (0 si non renseigné)
+//   - sat / sig / cap satellites, signal %, cap — optionnels, vides possible
+//
+//   Le firmware a historiquement ajouté sat, sig puis cap EN FIN de trame :
+//   les champs sat/sig/cap sont donc relus depuis la fin pour rester robuste
+//   aux deux variantes (avec/sans événement) qui ne contiennent pas le même
+//   nombre de champs.
+const parseRawPayload = (payload) => {
+    const parts = payload.split(';');
+    if (parts.length < 6)
+        return null;
+    const read = (i) => {
+        const v = parts[i];
+        return v !== undefined && v.trim() !== '' ? v.trim() : undefined;
+    };
+    const cap = read(parts.length - 1);
+    const sig = read(parts.length - 2);
+    const sat = read(parts.length - 3);
+    return {
+        id: read(0),
+        lat: read(1),
+        lon: read(2),
+        bat: read(3),
+        spd: read(4),
+        ts: read(5),
+        evt: read(6),
+        value: read(7),
+        threshold: read(8),
+        sat, sig, cap,
+    };
+};
+const handleRawMessage = async (trackerId, payloadBuffer) => {
+    const raw = parseRawPayload(payloadBuffer.toString());
+    if (!raw || !raw.id || raw.lat === undefined || raw.lon === undefined || raw.bat === undefined) {
+        console.warn(`[MQTT] Trame raw invalide pour ${trackerId} :`, payloadBuffer.toString().slice(0, 120));
         return;
+    }
+    const lat = Number(raw.lat);
+    const lon = Number(raw.lon);
+    const bat = Number(raw.bat);
+    const spd = raw.spd !== undefined ? Number(raw.spd) : 0;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(bat)) {
+        console.warn(`[MQTT] Champs non numériques pour ${trackerId}`);
+        return;
+    }
+    if (!(0, trame_validator_1.isValidCoord)(lat, lon) || !(0, trame_validator_1.isValidBattery)(bat) || !(0, trame_validator_1.isValidSpeed)(spd)) {
+        console.warn(`[MQTT] Valeurs hors plage pour ${trackerId} : lat=${lat} lon=${lon} bat=${bat} spd=${spd}`);
+        return;
+    }
+    const device = await (0, vehicle_lookup_service_1.findVehiculeByIdentifier)(raw.id);
+    if (!device) {
+        console.warn(`[MQTT] Traceur inconnu : ${raw.id}`);
+        return;
+    }
+    const ts = raw.ts ? new Date(raw.ts) : new Date();
+    const capN = raw.cap !== undefined ? Number(raw.cap) : undefined;
+    const satN = raw.sat !== undefined ? Number(raw.sat) : undefined;
+    const sigN = raw.sig !== undefined ? Number(raw.sig) : undefined;
+    await (0, position_handler_1.handlePositionPayload)(device.id, {
+        latitude: lat,
+        longitude: lon,
+        vitesse: spd,
+        cap: Number.isFinite(capN) ? capN : undefined,
+        battery: bat,
+        satellites: Number.isFinite(satN) ? satN : undefined,
+        signal: Number.isFinite(sigN) ? sigN : undefined,
+        timestamp: ts,
+        source: 'mqtt',
+        eventType: (0, event_codes_1.mapTrackerEvent)(raw.evt),
+        eventValue: raw.value !== undefined ? Number(raw.value) : undefined,
+        eventThreshold: raw.threshold !== undefined ? Number(raw.threshold) : undefined,
+    });
+    console.log(`[MQTT] Position raw traitée pour ${raw.id} (topic ${trackerId})`);
+};
+// Canal « data » : format JSON documenté pour un relais éventuel
+// (ex. mqtt_relay.js) qui aurait déjà converti la trame brute en JSON.
+//   topic : faucon/<trackerId>/data
+//   payload : { "lat":4.09, "lon":9.80, "bat":85, "spd":12.3, "ts":"2026-...",
+//               "sat":8, "sig":72, "cap":214.9, "evt":"2", "value":15, "threshold":20 }
+const handleDataMessage = async (trackerId, payloadBuffer) => {
     let payload;
     try {
         payload = JSON.parse(payloadBuffer.toString());
@@ -60,7 +129,6 @@ const handleMessage = async (topic, payloadBuffer) => {
         console.warn(`[MQTT] Traceur inconnu : ${trackerId}`);
         return;
     }
-    const evt = payload.evt !== undefined ? EVENT_CODE_MAP[String(payload.evt)] : undefined;
     const sat = payload.sat !== undefined ? Number(payload.sat) : undefined;
     const sig = payload.sig !== undefined ? Number(payload.sig) : undefined;
     const cap = payload.cap !== undefined ? Number(payload.cap) : undefined;
@@ -74,18 +142,17 @@ const handleMessage = async (topic, payloadBuffer) => {
         signal: Number.isFinite(sig) ? sig : undefined,
         timestamp: ts,
         source: 'mqtt',
-        eventType: evt,
+        eventType: (0, event_codes_1.mapTrackerEvent)(payload.evt),
         eventValue: payload.value !== undefined ? Number(payload.value) : undefined,
         eventThreshold: payload.threshold !== undefined ? Number(payload.threshold) : undefined,
     });
-    console.log(`[MQTT] Position traitée pour ${trackerId} (topic ${topic})`);
+    console.log(`[MQTT] Position data traitée pour ${trackerId}`);
 };
 // Topic : faucon/<trackerId>/ack — réponse du traceur à une commande
-// descendante (cf. commandTracker.service.ts). Payload attendu :
+// descendante. Payload attendu :
 //   { "id": "<uuid CommandeDescendante>", "cmd": "...", "ok": true/false,
 //     "detail": "..." }
-const handleAckMessage = async (topic, payloadBuffer) => {
-    const trackerId = topic.split('/')[1];
+const handleAckMessage = async (trackerId, payloadBuffer) => {
     if (!trackerId)
         return;
     let payload;
@@ -124,11 +191,12 @@ const startMqttClient = () => {
     });
     client.on('connect', () => {
         console.log('📡 MQTT connecté au broker');
-        client.subscribe('faucon/+/data', { qos: 1 }, (err) => {
+        // `raw` = format natif du firmware ; `data` = JSON (relais éventuel).
+        client.subscribe(['faucon/+/raw', 'faucon/+/data'], { qos: 1 }, (err) => {
             if (err)
-                console.error('[MQTT] Erreur abonnement :', err);
+                console.error('[MQTT] Erreur abonnement data/raw :', err);
             else
-                console.log('[MQTT] Abonné à faucon/+/data');
+                console.log('[MQTT] Abonné à faucon/+/raw et faucon/+/data');
         });
         client.subscribe('faucon/+/ack', { qos: 1 }, (err) => {
             if (err)
@@ -138,11 +206,20 @@ const startMqttClient = () => {
         });
     });
     client.on('message', (topic, payloadBuffer) => {
+        // Topic : faucon/<trackerId>/<suffix> — le trackerId du canal est extrait
+        // du topic ; pour le canal raw, l'identifiant relu dans le payload fait
+        // foi (le firmware y répète l'identifiant du traceur).
+        const parts = topic.split('/');
+        const trackerId = parts.length >= 3 ? parts[1] : topic;
         if (topic.endsWith('/ack')) {
-            handleAckMessage(topic, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement ack :', err));
+            handleAckMessage(trackerId, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement ack :', err));
             return;
         }
-        handleMessage(topic, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement :', err));
+        if (topic.endsWith('/raw')) {
+            handleRawMessage(trackerId, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement raw :', err));
+            return;
+        }
+        handleDataMessage(trackerId, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement data :', err));
     });
     client.on('error', (err) => console.error('[MQTT] Erreur connexion :', err));
     client.on('reconnect', () => console.log('[MQTT] Reconnexion en cours...'));

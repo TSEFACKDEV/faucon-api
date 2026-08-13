@@ -3,6 +3,7 @@ import { sendError, sendSuccess } from '../utils/response';
 import { handlePositionPayload } from '../tracker/position.handler';
 import { findVehiculeByIdentifier } from '../services/vehicle-lookup.service';
 import { isValidCoord, isValidSpeed, isValidBattery } from '../tracker/trame.validator';
+import { mapTrackerEvent } from '../tracker/event-codes';
 
 const router = Router();
 
@@ -48,20 +49,7 @@ const parseTimestampParam = (value: unknown): Date => {
   return Number.isNaN(parsedIso.getTime()) ? new Date() : parsedIso;
 };
 
-// Codes d'événement numériques utilisés par les canaux HTTP/SMS — doivent
-// rester synchronisés avec l'enum Prisma TypeAlarme.
-const EVENT_CODE_MAP: Record<string, string> = {
-  '1': 'DECOLLEMENT_TRACEUR',
-  '2': 'BATTERIE_FAIBLE',
-  '3': 'VITESSE_EXCESSIVE',
-  '4': 'SORTIE_ZONE',
-  '5': 'NON_MOUVEMENT',
-};
-
-const mapTrackerEvent = (evt: unknown): string | undefined => {
-  if (evt === undefined || evt === null || evt === '') return undefined;
-  return EVENT_CODE_MAP[String(evt)];
-};
+// Codes d'événement : voir tracker/event-codes.ts (source unique).
 
 /**
  * Format clé=valeur (ex: id=...&lat=...&lon=...&bat=...).

@@ -18,9 +18,9 @@ exports.authService = {
         const motDePasseHash = await bcryptjs_1.default.hash(password, 12);
         const user = await database_1.prisma.utilisateur.create({
             data: { userName, email, motDePasseHash },
-            select: { id: true, userName: true, email: true, dateCreation: true },
+            select: { id: true, userName: true, email: true, role: true, telephone: true, dateCreation: true },
         });
-        const payload = { id: user.id, email: user.email, userName: user.userName };
+        const payload = { id: user.id, email: user.email, userName: user.userName, role: user.role };
         const accessToken = (0, jwt_1.signAccessToken)(payload);
         const refreshToken = (0, jwt_1.signRefreshToken)(payload);
         // Expiration refresh token dans 7 jours
@@ -42,7 +42,7 @@ exports.authService = {
             where: { id: user.id },
             data: { derniereConnexion: new Date() },
         });
-        const payload = { id: user.id, email: user.email, userName: user.userName };
+        const payload = { id: user.id, email: user.email, userName: user.userName, role: user.role };
         const accessToken = (0, jwt_1.signAccessToken)(payload);
         const refreshToken = (0, jwt_1.signRefreshToken)(payload);
         const dateExpiration = new Date();
@@ -56,7 +56,7 @@ exports.authService = {
     me: async (userId) => {
         const user = await database_1.prisma.utilisateur.findUnique({
             where: { id: userId },
-            select: { id: true, userName: true, email: true, telephone: true, dateCreation: true },
+            select: { id: true, userName: true, email: true, telephone: true, role: true, dateCreation: true },
         });
         if (!user)
             throw new Error('Utilisateur introuvable');
@@ -81,7 +81,7 @@ exports.authService = {
                 ...(email !== undefined && { email }),
                 ...(telephone !== undefined && { telephone }),
             },
-            select: { id: true, userName: true, email: true, telephone: true, dateCreation: true },
+            select: { id: true, userName: true, email: true, telephone: true, role: true, dateCreation: true },
         });
         return user;
     },
@@ -101,6 +101,7 @@ exports.authService = {
             id: decoded.id,
             email: decoded.email,
             userName: decoded.userName,
+            role: decoded.role,
         });
         return { accessToken: newAccessToken };
     },

@@ -20,6 +20,7 @@ const initWebSocket = (httpServer) => {
         try {
             const payload = (0, jwt_1.verifyAccessToken)(token);
             socket.data.utilisateurId = payload.id;
+            socket.data.role = payload.role;
             next();
         }
         catch {
@@ -29,14 +30,18 @@ const initWebSocket = (httpServer) => {
     io.on('connection', (socket) => {
         const utilisateurId = socket.data.utilisateurId;
         console.log(`[WS] Client connecté : ${socket.id} (user ${utilisateurId})`);
-        // Un client ne peut s'abonner qu'aux véhicules qu'il possède.
+        // Un client ne peut s'abonner qu'aux véhicules qu'il possède — sauf un
+        // ADMIN (dashboard web de supervision), qui voit tous les traceurs.
         socket.on('subscribe', async (vehiculeIds) => {
             if (!Array.isArray(vehiculeIds) || vehiculeIds.length === 0)
                 return;
-            const owned = await database_1.prisma.vehicule.findMany({
-                where: { id: { in: vehiculeIds }, utilisateurId },
-                select: { id: true },
-            });
+            const isAdmin = socket.data.role === 'ADMIN';
+            const owned = isAdmin
+                ? await database_1.prisma.vehicule.findMany({ where: { id: { in: vehiculeIds } }, select: { id: true } })
+                : await database_1.prisma.vehicule.findMany({
+                    where: { id: { in: vehiculeIds }, utilisateurId },
+                    select: { id: true },
+                });
             owned.forEach(({ id }) => socket.join(`vehicle:${id}`));
             console.log(`[WS] ${socket.id} abonné à ${owned.length}/${vehiculeIds.length} véhicule(s)`);
         });

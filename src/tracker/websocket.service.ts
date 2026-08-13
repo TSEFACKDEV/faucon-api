@@ -5,7 +5,7 @@ import { prisma } from '../config/database';
 import { corsOrigins } from '../config/cors';
 
 interface AuthenticatedSocket extends Socket {
-  data: { utilisateurId: string };
+  data: { utilisateurId: string; role?: string };
 }
 
 let io: SocketServer;
@@ -25,6 +25,7 @@ export const initWebSocket = (httpServer: HttpServer): void => {
     try {
       const payload = verifyAccessToken(token);
       (socket as AuthenticatedSocket).data.utilisateurId = payload.id;
+      (socket as AuthenticatedSocket).data.role = payload.role;
       next();
     } catch {
       next(new Error('Token invalide ou expiré'));
@@ -35,14 +36,18 @@ export const initWebSocket = (httpServer: HttpServer): void => {
     const utilisateurId = (socket as AuthenticatedSocket).data.utilisateurId;
     console.log(`[WS] Client connecté : ${socket.id} (user ${utilisateurId})`);
 
-    // Un client ne peut s'abonner qu'aux véhicules qu'il possède.
+    // Un client ne peut s'abonner qu'aux véhicules qu'il possède — sauf un
+    // ADMIN (dashboard web de supervision), qui voit tous les traceurs.
     socket.on('subscribe', async (vehiculeIds: string[]) => {
       if (!Array.isArray(vehiculeIds) || vehiculeIds.length === 0) return;
 
-      const owned = await prisma.vehicule.findMany({
-        where: { id: { in: vehiculeIds }, utilisateurId },
-        select: { id: true },
-      });
+      const isAdmin = (socket as AuthenticatedSocket).data.role === 'ADMIN';
+      const owned = isAdmin
+        ? await prisma.vehicule.findMany({ where: { id: { in: vehiculeIds } }, select: { id: true } })
+        : await prisma.vehicule.findMany({
+            where: { id: { in: vehiculeIds }, utilisateurId },
+            select: { id: true },
+          });
 
       owned.forEach(({ id }) => socket.join(`vehicle:${id}`));
       console.log(`[WS] ${socket.id} abonné à ${owned.length}/${vehiculeIds.length} véhicule(s)`);

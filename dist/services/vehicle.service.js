@@ -1,14 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.vehicleService = void 0;
+exports.vehicleService = exports.envoyerCommande = exports.NUMERO_SMS_REGEX = void 0;
 const database_1 = require("../config/database");
 const errors_1 = require("../utils/errors");
 const vehicle_lookup_service_1 = require("./vehicle-lookup.service");
 const mqtt_client_1 = require("../tracker/mqtt.client");
+const constants_1 = require("../utils/constants");
+// Vérifie l'appartenance du véhicule quand un propriétaire est fourni (app
+// mobile). Sans propriétaire (dashboard admin, rôle ADMIN déjà validé par le
+// middleware), l'accès n'est pas restreint.
+const findOwnedVehicle = (vehiculeId, utilisateurId) => utilisateurId
+    ? database_1.prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } })
+    : database_1.prisma.vehicule.findUnique({ where: { id: vehiculeId } });
+const findOwnedAlarme = (alarmeId, utilisateurId) => utilisateurId
+    ? database_1.prisma.alarme.findFirst({ where: { id: alarmeId, vehicule: { utilisateurId } } })
+    : database_1.prisma.alarme.findUnique({ where: { id: alarmeId } });
 // Format international minimal (+237XXXXXXXXX) — le firmware refait de
 // toute façon sa propre validation avant d'accepter la commande, celle-ci
 // n'est là que pour rejeter les erreurs de saisie évidentes tout de suite.
-const NUMERO_SMS_REGEX = /^\+[1-9]\d{7,14}$/;
+exports.NUMERO_SMS_REGEX = /^\+[1-9]\d{7,14}$/;
 // Crée la commande en base (PENDING) puis la publie sur le topic MQTT du
 // traceur. Si la publication échoue immédiatement (canal MQTT indisponible
 // — cf. `publishCommand` qui renvoie false quand le client n'est pas
@@ -33,6 +43,7 @@ const envoyerCommande = async (vehiculeId, trackerId, codeCommande, parametres) 
     }
     return commande;
 };
+exports.envoyerCommande = envoyerCommande;
 exports.vehicleService = {
     addVehicle: async (utilisateurId, identifier, nom, pin) => {
         const existing = await (0, vehicle_lookup_service_1.findVehiculeByIdentifier)(identifier);
@@ -73,8 +84,13 @@ exports.vehicleService = {
             },
         });
     },
+    // Mêmes données que la vue admin (admin.service.getVehicules) : chaque
+    // traceur renvoie sa dernière position connue + son statut « en ligne »,
+    // calculé à partir de la VRAIE dernière communication du traceur — les
+    // clients (web et mobile) n'ont plus à ré-interroger une position par
+    // traceur pour afficher la carte.
     getVehicles: async (utilisateurId) => {
-        return database_1.prisma.vehicule.findMany({
+        const vehicules = await database_1.prisma.vehicule.findMany({
             where: { utilisateurId },
             select: {
                 id: true, imei: true, trackerId: true, nom: true, image: true,
@@ -84,6 +100,23 @@ exports.vehicleService = {
                 perimetreGeofence: true,
             },
             orderBy: { dateAjout: 'desc' },
+        });
+        const dernieres = await database_1.prisma.position.findMany({
+            where: { vehiculeId: { in: vehicules.map((v) => v.id) } },
+            orderBy: { horodatage: 'desc' },
+            distinct: ['vehiculeId'],
+            select: { vehiculeId: true, latitude: true, longitude: true },
+        });
+        const positionParVehicule = new Map(dernieres.map((p) => [p.vehiculeId, p]));
+        const maintenant = Date.now();
+        return vehicules.map((v) => {
+            const pos = positionParVehicule.get(v.id);
+            return {
+                ...v,
+                latitude: pos?.latitude ?? null,
+                longitude: pos?.longitude ?? null,
+                enLigne: !!v.derniereCommunication && maintenant - v.derniereCommunication.getTime() < constants_1.EN_LIGNE_SEUIL_MS,
+            };
         });
     },
     getVehicleById: async (id, utilisateurId) => {
@@ -120,7 +153,7 @@ exports.vehicleService = {
         await database_1.prisma.vehicule.delete({ where: { id } });
     },
     setSpeedLimit: async (vehiculeId, utilisateurId, seuilKmh) => {
-        const vehicle = await database_1.prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+        const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
         if (!vehicle)
             throw new errors_1.NotFoundError('Véhicule introuvable');
         return database_1.prisma.limiteVitesse.upsert({
@@ -130,7 +163,7 @@ exports.vehicleService = {
         });
     },
     setGeofence: async (vehiculeId, utilisateurId, nom, centreLat, centreLon, rayonMetres) => {
-        const vehicle = await database_1.prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+        const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
         if (!vehicle)
             throw new errors_1.NotFoundError('Véhicule introuvable');
         return database_1.prisma.perimetreGeofence.upsert({
@@ -140,7 +173,7 @@ exports.vehicleService = {
         });
     },
     setMode: async (vehiculeId, utilisateurId, mode) => {
-        const vehicle = await database_1.prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+        const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
         if (!vehicle)
             throw new errors_1.NotFoundError('Véhicule introuvable');
         const updated = await database_1.prisma.vehicule.update({
@@ -154,7 +187,7 @@ exports.vehicleService = {
         // encore d'identifiant MQTT (ex. juste après provisionnement, avant
         // toute connexion).
         if (vehicle.trackerId) {
-            await envoyerCommande(vehiculeId, vehicle.trackerId, 'MODE', { valeur: mode });
+            await (0, exports.envoyerCommande)(vehiculeId, vehicle.trackerId, 'MODE', { valeur: mode });
         }
         return updated;
     },
@@ -162,10 +195,10 @@ exports.vehicleService = {
     // (choc, conduite brutale, premier fix...). Même principe que setMode :
     // écrit en base ET poussé au traceur via une commande MQTT.
     setPhoneAlerte: async (vehiculeId, utilisateurId, telephone) => {
-        const vehicle = await database_1.prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+        const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
         if (!vehicle)
             throw new errors_1.NotFoundError('Véhicule introuvable');
-        if (!NUMERO_SMS_REGEX.test(telephone)) {
+        if (!exports.NUMERO_SMS_REGEX.test(telephone)) {
             throw new errors_1.AppError('Numéro invalide (format attendu : +237XXXXXXXXX)', 400);
         }
         const updated = await database_1.prisma.vehicule.update({
@@ -174,7 +207,7 @@ exports.vehicleService = {
             select: { id: true, telephoneAlerte: true },
         });
         if (vehicle.trackerId) {
-            await envoyerCommande(vehiculeId, vehicle.trackerId, 'NUMERO_SMS', { valeur: telephone });
+            await (0, exports.envoyerCommande)(vehiculeId, vehicle.trackerId, 'NUMERO_SMS', { valeur: telephone });
         }
         return updated;
     },
@@ -183,13 +216,13 @@ exports.vehicleService = {
     // déclenchées par un champ dédié existant plutôt que par ce chemin
     // générique.
     sendCommande: async (vehiculeId, utilisateurId, codeCommande, parametres) => {
-        const vehicle = await database_1.prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
+        const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
         if (!vehicle)
             throw new errors_1.NotFoundError('Véhicule introuvable');
         if (!vehicle.trackerId) {
             throw new errors_1.AppError("Ce traceur n'a pas encore d'identifiant MQTT connu — commande impossible.", 400);
         }
-        return envoyerCommande(vehiculeId, vehicle.trackerId, codeCommande, parametres);
+        return (0, exports.envoyerCommande)(vehiculeId, vehicle.trackerId, codeCommande, parametres);
     },
     getCommandes: async (vehiculeId, utilisateurId) => {
         const vehicle = await database_1.prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
@@ -272,9 +305,7 @@ exports.vehicleService = {
         });
     },
     acquitAlarme: async (alarmeId, utilisateurId) => {
-        const alarme = await database_1.prisma.alarme.findFirst({
-            where: { id: alarmeId, vehicule: { utilisateurId } },
-        });
+        const alarme = await findOwnedAlarme(alarmeId, utilisateurId);
         if (!alarme)
             throw new errors_1.NotFoundError('Alarme introuvable');
         return database_1.prisma.alarme.update({
@@ -283,9 +314,7 @@ exports.vehicleService = {
         });
     },
     deleteAlarme: async (alarmeId, utilisateurId) => {
-        const alarme = await database_1.prisma.alarme.findFirst({
-            where: { id: alarmeId, vehicule: { utilisateurId } },
-        });
+        const alarme = await findOwnedAlarme(alarmeId, utilisateurId);
         if (!alarme)
             throw new errors_1.NotFoundError('Alarme introuvable');
         await database_1.prisma.alarme.delete({ where: { id: alarmeId } });

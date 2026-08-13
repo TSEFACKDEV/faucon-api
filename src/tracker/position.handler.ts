@@ -28,6 +28,41 @@ export const handlePositionPayload = async (
   payload: PositionPayload
 ): Promise<void> => {
   try {
+    // Déduplication : une même trame peut arriver par plusieurs canaux
+    // (firmware → `raw` ET relais → `data`, TCP + MQTT redondants) ou être
+    // redélivrée (QoS 1). On ne persiste qu'une position par véhicule pour un
+    // même horodatage (± 2 s), sinon l'historique et la trace sont faussés.
+    const duplicate = await prisma.position.findFirst({
+      where: {
+        vehiculeId,
+        horodatage: {
+          gte: new Date(payload.timestamp.getTime() - 2000),
+          lte: new Date(payload.timestamp.getTime() + 2000),
+        },
+      },
+      select: { id: true },
+    });
+
+    // Duplicata : on diffuse quand même en temps réel (le dashboard a besoin
+    // de la fraîcheur) mais on ne crée pas de nouvelle rangée.
+    if (duplicate) {
+      broadcastPosition(vehiculeId, {
+        vehiculeId,
+        latitude:  payload.latitude,
+        longitude: payload.longitude,
+        vitesse:   payload.vitesse,
+        cap:       payload.cap,
+        battery:   payload.battery,
+        satellites: payload.satellites,
+        signal:    payload.signal,
+        horodatage: payload.timestamp.toISOString(),
+        source:    payload.source,
+        eventType: payload.eventType,
+      });
+      console.log(`[POSITION] ${vehiculeId} → duplicata ignoré (${payload.source})`);
+      return;
+    }
+
     // 1. Sauvegarder la position
     await prisma.position.create({
       data: {

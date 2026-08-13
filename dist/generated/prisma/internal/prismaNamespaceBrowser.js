@@ -102,6 +102,7 @@ exports.UtilisateurScalarFieldEnum = {
     email: 'email',
     motDePasseHash: 'motDePasseHash',
     telephone: 'telephone',
+    role: 'role',
     dateCreation: 'dateCreation',
     derniereConnexion: 'derniereConnexion'
 };

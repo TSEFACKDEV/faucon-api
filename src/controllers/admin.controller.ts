@@ -3,12 +3,7 @@ import { adminService } from '../services/admin.service';
 import { provisionerLot } from '../services/provisioning.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { Role } from '../generated/prisma/enums';
-
-const getParamId = (param: string | string[] | undefined): string | null => {
-  if (!param) return null;
-  if (Array.isArray(param)) return param[0] || null;
-  return param;
-};
+import { getParamId } from '../utils/params';
 
 const ROLE_VALUES = ['UTILISATEUR', 'ADMIN'];
 const CODES_COMMANDE = ['LOCALISER', 'MODE', 'REDEMARRER', 'RESET_USINE'];

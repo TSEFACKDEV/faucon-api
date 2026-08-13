@@ -2,6 +2,7 @@ import {prisma} from '../config/database';
 import { AppError, NotFoundError } from '../utils/errors';
 import { findVehiculeByIdentifier } from './vehicle-lookup.service';
 import { publishCommand } from '../tracker/mqtt.client';
+import { EN_LIGNE_SEUIL_MS } from '../utils/constants';
 
 export type CodeCommande = 'LOCALISER' | 'MODE' | 'REDEMARRER' | 'RESET_USINE' | 'NUMERO_SMS';
 
@@ -103,8 +104,13 @@ export const vehicleService = {
     });
   },
 
+  // Mêmes données que la vue admin (admin.service.getVehicules) : chaque
+  // traceur renvoie sa dernière position connue + son statut « en ligne »,
+  // calculé à partir de la VRAIE dernière communication du traceur — les
+  // clients (web et mobile) n'ont plus à ré-interroger une position par
+  // traceur pour afficher la carte.
   getVehicles: async (utilisateurId: string) => {
-    return prisma.vehicule.findMany({
+    const vehicules = await prisma.vehicule.findMany({
       where: { utilisateurId },
       select: {
         id: true, imei: true, trackerId: true, nom: true, image: true,
@@ -114,6 +120,25 @@ export const vehicleService = {
         perimetreGeofence: true,
       },
       orderBy: { dateAjout: 'desc' },
+    });
+
+    const dernieres = await prisma.position.findMany({
+      where: { vehiculeId: { in: vehicules.map((v) => v.id) } },
+      orderBy: { horodatage: 'desc' },
+      distinct: ['vehiculeId'],
+      select: { vehiculeId: true, latitude: true, longitude: true },
+    });
+    const positionParVehicule = new Map(dernieres.map((p) => [p.vehiculeId, p]));
+
+    const maintenant = Date.now();
+    return vehicules.map((v) => {
+      const pos = positionParVehicule.get(v.id);
+      return {
+        ...v,
+        latitude: pos?.latitude ?? null,
+        longitude: pos?.longitude ?? null,
+        enLigne: !!v.derniereCommunication && maintenant - v.derniereCommunication.getTime() < EN_LIGNE_SEUIL_MS,
+      };
     });
   },
 

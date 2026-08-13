@@ -5,6 +5,7 @@ const response_1 = require("../utils/response");
 const position_handler_1 = require("../tracker/position.handler");
 const vehicle_lookup_service_1 = require("../services/vehicle-lookup.service");
 const trame_validator_1 = require("../tracker/trame.validator");
+const event_codes_1 = require("../tracker/event-codes");
 const router = (0, express_1.Router)();
 const parseNumber = (value) => {
     if (value === undefined || value === null || value === '')
@@ -44,20 +45,7 @@ const parseTimestampParam = (value) => {
     const parsedIso = new Date(raw);
     return Number.isNaN(parsedIso.getTime()) ? new Date() : parsedIso;
 };
-// Codes d'événement numériques utilisés par les canaux HTTP/SMS — doivent
-// rester synchronisés avec l'enum Prisma TypeAlarme.
-const EVENT_CODE_MAP = {
-    '1': 'DECOLLEMENT_TRACEUR',
-    '2': 'BATTERIE_FAIBLE',
-    '3': 'VITESSE_EXCESSIVE',
-    '4': 'SORTIE_ZONE',
-    '5': 'NON_MOUVEMENT',
-};
-const mapTrackerEvent = (evt) => {
-    if (evt === undefined || evt === null || evt === '')
-        return undefined;
-    return EVENT_CODE_MAP[String(evt)];
-};
+// Codes d'événement : voir tracker/event-codes.ts (source unique).
 /**
  * Format clé=valeur (ex: id=...&lat=...&lon=...&bat=...).
  */
@@ -137,7 +125,7 @@ router.post('/webhook', async (req, res) => {
             signal: sig ?? undefined,
             timestamp: parseTimestampParam(req.query.ts),
             source: 'http',
-            eventType: mapTrackerEvent(evt),
+            eventType: (0, event_codes_1.mapTrackerEvent)(evt),
             eventValue: value ?? undefined,
             eventThreshold: threshold ?? undefined,
             cycleNumber: cyc ?? undefined,
@@ -172,7 +160,7 @@ router.post('/sms', async (req, res) => {
             battery: parsed.battery,
             timestamp: new Date(),
             source: 'sms',
-            eventType: parsed.event ? mapTrackerEvent(parsed.event) : undefined,
+            eventType: parsed.event ? (0, event_codes_1.mapTrackerEvent)(parsed.event) : undefined,
             cycleNumber: parsed.cycle,
             alertCount: parsed.alertCount,
         });

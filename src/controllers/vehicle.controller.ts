@@ -4,13 +4,7 @@ import { vehicleService } from '../services/vehicle.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { prisma } from '../config/database';
 import { generateVehicleReport } from '../cron/report.generator';
-
-// Fonction utilitaire pour extraire un paramètre string
-const getParamId = (param: string | string[] | undefined): string | null => {
-  if (!param) return null;
-  if (Array.isArray(param)) return param[0] || null;
-  return param;
-};
+import { getParamId } from '../utils/params';
 
 export const vehicleController = {
 

@@ -9,7 +9,11 @@
 * 🟢 You can import this file directly.
 */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.StatutCommande = exports.CanalNotification = exports.TypeAlarme = exports.ModeFonctionnement = void 0;
+exports.StatutCommande = exports.CanalNotification = exports.TypeAlarme = exports.ModeFonctionnement = exports.Role = void 0;
+exports.Role = {
+    UTILISATEUR: 'UTILISATEUR',
+    ADMIN: 'ADMIN'
+};
 exports.ModeFonctionnement = {
     WORK: 'WORK',
     MOVE: 'MOVE',

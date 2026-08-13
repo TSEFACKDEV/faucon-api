@@ -5,14 +5,7 @@ const vehicle_service_1 = require("../services/vehicle.service");
 const response_1 = require("../utils/response");
 const database_1 = require("../config/database");
 const report_generator_1 = require("../cron/report.generator");
-// Fonction utilitaire pour extraire un paramètre string
-const getParamId = (param) => {
-    if (!param)
-        return null;
-    if (Array.isArray(param))
-        return param[0] || null;
-    return param;
-};
+const params_1 = require("../utils/params");
 exports.vehicleController = {
     addVehicle: async (req, res) => {
         try {
@@ -40,7 +33,7 @@ exports.vehicleController = {
     },
     getVehicleById: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const vehicle = await vehicle_service_1.vehicleService.getVehicleById(id, req.user.id);
@@ -52,7 +45,7 @@ exports.vehicleController = {
     },
     updateVehicle: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { nom, image } = req.body;
@@ -65,7 +58,7 @@ exports.vehicleController = {
     },
     deleteVehicle: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             await vehicle_service_1.vehicleService.deleteVehicle(id, req.user.id);
@@ -77,7 +70,7 @@ exports.vehicleController = {
     },
     setSpeedLimit: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { seuilKmh } = req.body;
@@ -92,7 +85,7 @@ exports.vehicleController = {
     },
     setGeofence: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { nom, centreLat, centreLon, rayonMetres } = req.body;
@@ -108,7 +101,7 @@ exports.vehicleController = {
     },
     setMode: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { mode } = req.body;
@@ -124,7 +117,7 @@ exports.vehicleController = {
     },
     setPhoneAlerte: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { telephone } = req.body;
@@ -140,7 +133,7 @@ exports.vehicleController = {
     },
     sendCommande: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { codeCommande, valeur } = req.body;
@@ -160,7 +153,7 @@ exports.vehicleController = {
     },
     getCommandes: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const commandes = await vehicle_service_1.vehicleService.getCommandes(id, req.user.id);
@@ -172,7 +165,7 @@ exports.vehicleController = {
     },
     getLastPosition: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const position = await vehicle_service_1.vehicleService.getLastPosition(id, req.user.id);
@@ -184,7 +177,7 @@ exports.vehicleController = {
     },
     getPositionHistory: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const from = req.query.from;
@@ -201,7 +194,7 @@ exports.vehicleController = {
     },
     getReplay: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const from = req.query.from;
@@ -215,7 +208,7 @@ exports.vehicleController = {
     },
     getDailyReport: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const date = req.query.date ?? new Date().toISOString().split('T')[0];
@@ -233,7 +226,7 @@ exports.vehicleController = {
     },
     getAlarmes: async (req, res) => {
         try {
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const alarmes = await vehicle_service_1.vehicleService.getAlarmes(id, req.user.id);
@@ -245,7 +238,7 @@ exports.vehicleController = {
     },
     acquitAlarme: async (req, res) => {
         try {
-            const alarmeId = getParamId(req.params.alarmeId ?? req.params.id);
+            const alarmeId = (0, params_1.getParamId)(req.params.alarmeId ?? req.params.id);
             if (!alarmeId)
                 return (0, response_1.sendError)(res, 'ID de l\'alarme requis', 400);
             const alarme = await vehicle_service_1.vehicleService.acquitAlarme(alarmeId, req.user.id);
@@ -257,7 +250,7 @@ exports.vehicleController = {
     },
     deleteAlarme: async (req, res) => {
         try {
-            const alarmeId = getParamId(req.params.alarmeId ?? req.params.id);
+            const alarmeId = (0, params_1.getParamId)(req.params.alarmeId ?? req.params.id);
             if (!alarmeId)
                 return (0, response_1.sendError)(res, 'ID de l\'alarme requis', 400);
             await vehicle_service_1.vehicleService.deleteAlarme(alarmeId, req.user.id);
@@ -270,7 +263,7 @@ exports.vehicleController = {
     generateReport: async (req, res) => {
         try {
             // 1. Correction de l'ID avec la fonction utilitaire
-            const id = getParamId(req.params.id);
+            const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { date } = req.body;

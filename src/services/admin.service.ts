@@ -3,10 +3,7 @@ import { prisma } from '../config/database';
 import { AppError, NotFoundError } from '../utils/errors';
 import { Role } from '../generated/prisma/enums';
 import { vehicleService } from './vehicle.service';
-
-// "En ligne" : dernière communication datant de moins de 5 minutes — même
-// seuil que l'app mobile (isRecentlyConnected) pour rester cohérent.
-const EN_LIGNE_SEUIL_MS = 5 * 60 * 1000;
+import { EN_LIGNE_SEUIL_MS } from '../utils/constants';
 
 // Fuseau opérationnel (Africa/Douala, UTC+1, sans heure d'été). Tous les
 // découpages "jour" (aujourd'hui, séries 7j/30j) utilisent ce fuseau pour
