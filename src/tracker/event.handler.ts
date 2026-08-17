@@ -2,12 +2,17 @@
 import { TrameEvent } from '../types/tracker.types';
 import { broadcastAlarm } from './websocket.service';
 import { prisma } from '../config/database';
+import { hasRecentUnacknowledgedAlarm } from './alarm-dedup';
 
 export const handleEvent = async (
   trame: TrameEvent,
   vehiculeId: string
 ): Promise<void> => {
   try {
+    if (await hasRecentUnacknowledgedAlarm(vehiculeId, trame.event, 5 * 60 * 1000)) {
+      return;
+    }
+
     const alarme = await prisma.alarme.create({
       data: {
         vehiculeId,

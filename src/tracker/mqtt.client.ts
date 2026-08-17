@@ -22,10 +22,15 @@ let client: MqttClient | null = null;
 //   - value/threshold  valeurs numériques de l'événement (0 si non renseigné)
 //   - sat / sig / cap satellites, signal %, cap — optionnels, vides possible
 //
-//   Le firmware a historiquement ajouté sat, sig puis cap EN FIN de trame :
-//   les champs sat/sig/cap sont donc relus depuis la fin pour rester robuste
-//   aux deux variantes (avec/sans événement) qui ne contiennent pas le même
-//   nombre de champs.
+//   Le firmware actuel (publierBrut, faucon_v12.ino) envoie TOUJOURS les 12
+//   champs à position fixe — evt/value/threshold sont vides (";;;") plutôt
+//   qu'omis quand il n'y a pas d'événement, idem pour sat/sig/cap absents.
+//   12 champs = lecture par position fixe, sans ambiguïté possible. Pour
+//   toute autre longueur (message tronqué/corrompu, ou ancien firmware qui
+//   omettait vraiment des champs), on ne lit QUE le socle commun (id..ts) :
+//   deviner evt/value/threshold vs sat/sig/cap depuis la fin est ambigu à 9
+//   champs pile (les deux variantes ont le même nombre de champs) et
+//   corrompt silencieusement sat/sig/cap avec des valeurs d'un autre champ.
 const parseRawPayload = (payload: string): Record<string, string | undefined> | null => {
   const parts = payload.split(';');
   if (parts.length < 6) return null;
@@ -35,21 +40,26 @@ const parseRawPayload = (payload: string): Record<string, string | undefined> | 
     return v !== undefined && v.trim() !== '' ? v.trim() : undefined;
   };
 
-  const cap   = read(parts.length - 1);
-  const sig   = read(parts.length - 2);
-  const sat   = read(parts.length - 3);
+  const core = {
+    id:  read(0), lat: read(1), lon: read(2),
+    bat: read(3), spd: read(4), ts:  read(5),
+  };
 
+  if (parts.length === 12) {
+    return {
+      ...core,
+      evt: read(6), value: read(7), threshold: read(8),
+      sat: read(9), sig: read(10), cap: read(11),
+    };
+  }
+
+  if (parts.length !== 6) {
+    console.warn(`[MQTT] Trame raw de longueur inattendue (${parts.length} champs) — seuls id/lat/lon/bat/spd/ts sont retenus : ${payload.slice(0, 120)}`);
+  }
   return {
-    id:        read(0),
-    lat:       read(1),
-    lon:       read(2),
-    bat:       read(3),
-    spd:       read(4),
-    ts:        read(5),
-    evt:       read(6),
-    value:     read(7),
-    threshold: read(8),
-    sat, sig, cap,
+    ...core,
+    evt: undefined, value: undefined, threshold: undefined,
+    sat: undefined, sig: undefined, cap: undefined,
   };
 };
 
@@ -191,7 +201,16 @@ export const publishCommand = (trackerId: string, payload: object): boolean => {
 export const startMqttClient = (): void => {
   const url = process.env.MQTT_BROKER_URL;
   if (!url) {
-    console.warn('[MQTT] MQTT_BROKER_URL absente — canal MQTT désactivé');
+    // MQTT est le canal PRINCIPAL du firmware (HTTP/SMS ne sont que des
+    // canaux de secours) — un oubli de configuration ici coupe l'essentiel
+    // du flux temps réel silencieusement. Reste non-fatal (un déploiement
+    // TCP/HTTP-only est possible) mais le signal doit être impossible à
+    // manquer dans les logs de démarrage.
+    console.error('╔═══════════════════════════════════════════════════════════════╗');
+    console.error('║  [MQTT] MQTT_BROKER_URL absente — canal MQTT DÉSACTIVÉ.         ║');
+    console.error('║  Le firmware publie principalement via MQTT : sans ce canal,    ║');
+    console.error('║  seuls les canaux de secours HTTP/SMS resteront actifs.         ║');
+    console.error('╚═══════════════════════════════════════════════════════════════╝');
     return;
   }
 

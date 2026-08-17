@@ -4,8 +4,18 @@ import { handlePositionPayload } from '../tracker/position.handler';
 import { findVehiculeByIdentifier } from '../services/vehicle-lookup.service';
 import { isValidCoord, isValidSpeed, isValidBattery } from '../tracker/trame.validator';
 import { mapTrackerEvent } from '../tracker/event-codes';
+import { rateLimit } from '../middlewares/rateLimit.middleware';
+import { requireTrackerWebhookKey } from '../middlewares/apiKey.middleware';
 
 const router = Router();
+
+// Ces deux routes sont le canal de secours du firmware (HTTP/SMS) quand MQTT
+// est indisponible — non authentifiées à ce jour côté matériel (voir
+// requireTrackerWebhookKey). Le rate limiting est la seule protection
+// effective immédiatement : un trackerId fait 4 chiffres (10 000
+// combinaisons, cf. provisioning.service.ts) et serait sinon brute-forçable
+// pour usurper la position d'un véhicule.
+const trackerRateLimit = rateLimit(30, 60 * 1000);
 
 const parseNumber = (value: unknown): number | null => {
   if (value === undefined || value === null || value === '') return null;
@@ -36,13 +46,16 @@ const parseTimestampParam = (value: unknown): Date => {
   const numeric = Number(raw);
 
   if (Number.isFinite(numeric)) {
-    if (numeric < 1e9) {
-      const date = new Date();
-      date.setHours(0, 0, 0, 0);
-      date.setSeconds(numeric);
-      return date;
+    // Un epoch (secondes ou millisecondes) pour une date proche d'aujourd'hui
+    // vaut toujours largement plus que 1e9 (≈ septembre 2001) — une valeur
+    // en dessous n'est pas un epoch valide pour ce contrat, donc invalide
+    // plutôt que réinterprétée à la devinette (l'ancienne variante
+    // "secondes depuis minuit" utilisait en plus le fuseau LOCAL du process
+    // serveur, jamais garanti être Africa/Douala).
+    if (numeric >= 1e9) {
+      return new Date(numeric < 1e10 ? numeric * 1000 : numeric);
     }
-    return new Date(numeric < 1e10 ? numeric * 1000 : numeric);
+    return new Date();
   }
 
   const parsedIso = new Date(raw);
@@ -94,7 +107,7 @@ const parseSmsFreeText = (raw: string) => {
 const parseSmsPosition = (raw: string) =>
   parseSmsKeyValue(raw) ?? parseSmsFreeText(raw);
 
-router.post('/webhook', async (req, res) => {
+router.post('/webhook', trackerRateLimit, requireTrackerWebhookKey, async (req, res) => {
   try {
     const id = req.query.id ?? req.query.trackerId ?? req.query.imei;
     const lat = parseNumber(req.query.lat);
@@ -156,7 +169,7 @@ router.post('/webhook', async (req, res) => {
   }
 });
 
-router.post('/sms', async (req, res) => {
+router.post('/sms', trackerRateLimit, requireTrackerWebhookKey, async (req, res) => {
   try {
     const raw = typeof req.body?.text === 'string' ? req.body.text : '';
     if (!raw) return sendError(res, 'Texte SMS requis', 400);

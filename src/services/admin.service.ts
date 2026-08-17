@@ -4,30 +4,9 @@ import { AppError, NotFoundError } from '../utils/errors';
 import { Role } from '../generated/prisma/enums';
 import { vehicleService } from './vehicle.service';
 import { EN_LIGNE_SEUIL_MS } from '../utils/constants';
+import { dayBounds, jourAujourdhui, jourDecale } from '../utils/dayBounds';
 
-// Fuseau opérationnel (Africa/Douala, UTC+1, sans heure d'été). Tous les
-// découpages "jour" (aujourd'hui, séries 7j/30j) utilisent ce fuseau pour
-// rester alignés sur les CRON (scheduler.ts).
-const TZ_OFFSET_MIN = 60;
-
-const dayStartUtc = (isoDate: string): Date => {
-  const [y, m, d] = isoDate.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d) - TZ_OFFSET_MIN * 60_000);
-};
-
-const dayBounds = (isoDate: string): { start: Date; end: Date } => {
-  const start = dayStartUtc(isoDate);
-  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1) };
-};
-
-const jourAujourdhui = (): string =>
-  new Date(Date.now() + TZ_OFFSET_MIN * 60_000).toISOString().slice(0, 10);
-
-const jourMoins = (offsetJours: number): string => {
-  const shifted = new Date(Date.now() + TZ_OFFSET_MIN * 60_000);
-  shifted.setDate(shifted.getDate() - offsetJours);
-  return shifted.toISOString().slice(0, 10);
-};
+const jourMoins = (offsetJours: number): string => jourDecale(-offsetJours);
 
 export const adminService = {
   // ── Utilisateurs ───────────────────────────────────────────────
@@ -249,21 +228,27 @@ export const adminService = {
       prisma.vehicule.groupBy({ by: ['modeActuel'], _count: { _all: true } }),
     ]);
 
-    const croissanceUtilisateurs30j = [];
-    for (let i = 29; i >= 0; i--) {
-      const date = jourMoins(i);
-      const { end } = dayBounds(date);
-      const total = await prisma.utilisateur.count({ where: { dateCreation: { lte: end } } });
-      croissanceUtilisateurs30j.push({ date, total });
-    }
+    // Les 30 + 7 requêtes de chaque série sont indépendantes (une date
+    // distincte chacune) — les lancer en parallèle plutôt que d'attendre
+    // (`await` dans une boucle `for`) chacune séquentiellement, sur un
+    // endpoint appelé à chaque chargement du dashboard admin.
+    const jours30 = Array.from({ length: 30 }, (_, k) => jourMoins(29 - k));
+    const croissanceUtilisateurs30j = await Promise.all(
+      jours30.map(async (date) => {
+        const { end } = dayBounds(date);
+        const total = await prisma.utilisateur.count({ where: { dateCreation: { lte: end } } });
+        return { date, total };
+      })
+    );
 
-    const alarmesParJour7j = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = jourMoins(i);
-      const { start, end } = dayBounds(date);
-      const total = await prisma.alarme.count({ where: { horodatage: { gte: start, lte: end } } });
-      alarmesParJour7j.push({ date, total });
-    }
+    const jours7 = Array.from({ length: 7 }, (_, k) => jourMoins(6 - k));
+    const alarmesParJour7j = await Promise.all(
+      jours7.map(async (date) => {
+        const { start, end } = dayBounds(date);
+        const total = await prisma.alarme.count({ where: { horodatage: { gte: start, lte: end } } });
+        return { date, total };
+      })
+    );
 
     const [batterieBasse, batterieMoyenne, batterieCorrecte, batterieBonne] = await Promise.all([
       prisma.vehicule.count({ where: { niveauBatterie: { lte: 20 } } }),

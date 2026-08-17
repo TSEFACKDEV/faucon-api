@@ -29,8 +29,11 @@ export const provisionerLot = async (
   count: number,
   prefix: string
 ): Promise<VehiculeProvisionne[]> => {
-  if (count < 1 || count > 500) {
-    throw new AppError('count doit être compris entre 1 et 500', 400);
+  // Number(req.body.count) sur une valeur non numérique donne NaN, qui rate
+  // silencieusement les deux comparaisons ci-dessous (NaN < 1 et NaN > 500
+  // sont toutes deux fausses) — Number.isInteger ferme ce passage.
+  if (!Number.isInteger(count) || count < 1 || count > 500) {
+    throw new AppError('count doit être un entier compris entre 1 et 500', 400);
   }
   if (!/^[A-Z0-9]{2,10}$/i.test(prefix)) {
     throw new AppError('prefix invalide (2 à 10 caractères alphanumériques)', 400);
@@ -39,35 +42,41 @@ export const provisionerLot = async (
   const resultats: VehiculeProvisionne[] = [];
 
   for (let i = 0; i < count; i++) {
-    let trackerId = '';
-    let pinActivation = '';
+    let cree: VehiculeProvisionne | null = null;
 
-    for (let tentative = 0; tentative < MAX_TENTATIVES_UNICITE; tentative++) {
-      const candidat = `${prefix.toUpperCase()}-${genererSuffixe()}`;
-      const existant = await prisma.vehicule.findUnique({ where: { trackerId: candidat } });
-      if (!existant) {
-        trackerId = candidat;
-        break;
+    // La vérification d'unicité puis la création sont deux requêtes
+    // distinctes : deux lots provisionnés en parallèle pourraient générer le
+    // même candidat entre les deux. On ferme la fenêtre en retentant sur une
+    // violation de contrainte unique côté DB plutôt qu'en se fiant au seul
+    // pré-check findUnique.
+    for (let tentative = 0; tentative < MAX_TENTATIVES_UNICITE && !cree; tentative++) {
+      const trackerId = `${prefix.toUpperCase()}-${genererSuffixe()}`;
+      const pinActivation = genererPin();
+
+      try {
+        await prisma.vehicule.create({
+          data: {
+            trackerId,
+            pinActivation,
+            nom: `Traceur ${trackerId}`,
+            estActif: false,
+          },
+        });
+        cree = { trackerId, pinActivation };
+      } catch (err: any) {
+        if (err?.code !== 'P2002') throw err;
+        // Collision sur trackerId : on retente avec un nouveau candidat.
       }
     }
-    if (!trackerId) {
+
+    if (!cree) {
       throw new AppError(
         `Impossible de générer un trackerId unique pour le préfixe "${prefix}" — préfixe probablement saturé`,
         409
       );
     }
-    pinActivation = genererPin();
 
-    await prisma.vehicule.create({
-      data: {
-        trackerId,
-        pinActivation,
-        nom: `Traceur ${trackerId}`,
-        estActif: false,
-      },
-    });
-
-    resultats.push({ trackerId, pinActivation });
+    resultats.push(cree);
   }
 
   return resultats;

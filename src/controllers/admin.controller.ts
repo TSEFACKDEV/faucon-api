@@ -4,6 +4,7 @@ import { provisionerLot } from '../services/provisioning.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { Role } from '../generated/prisma/enums';
 import { getParamId } from '../utils/params';
+import { isValidCoord } from '../tracker/trame.validator';
 
 const ROLE_VALUES = ['UTILISATEUR', 'ADMIN'];
 const CODES_COMMANDE = ['LOCALISER', 'MODE', 'REDEMARRER', 'RESET_USINE'];
@@ -171,10 +172,12 @@ export const adminController = {
   setSpeedLimit: async (req: Request, res: Response) => {
     try {
       const id = getParamId(req.params.id);
-      const { seuilKmh } = req.body;
       if (!id) return sendError(res, 'ID traceur requis', 400);
-      if (!seuilKmh) return sendError(res, 'Seuil requis', 400);
-      const data = await adminService.setSpeedLimit(id, Number(seuilKmh));
+      const seuilKmh = Number(req.body.seuilKmh);
+      if (!Number.isFinite(seuilKmh) || seuilKmh <= 0 || seuilKmh > 300) {
+        return sendError(res, 'Seuil de vitesse invalide (entre 0 et 300 km/h)', 400);
+      }
+      const data = await adminService.setSpeedLimit(id, seuilKmh);
       return sendSuccess(res, 'Limite de vitesse configurée', data);
     } catch (err: any) {
       return sendError(res, err.message, err.statusCode ?? 400);
@@ -184,13 +187,19 @@ export const adminController = {
   setGeofence: async (req: Request, res: Response) => {
     try {
       const id = getParamId(req.params.id);
-      const { nom, centreLat, centreLon, rayonMetres } = req.body;
       if (!id) return sendError(res, 'ID traceur requis', 400);
-      if (!nom || !centreLat || !centreLon || !rayonMetres) {
-        return sendError(res, 'Tous les champs géofence sont requis', 400);
+      const { nom } = req.body;
+      const centreLat = Number(req.body.centreLat);
+      const centreLon = Number(req.body.centreLon);
+      const rayonMetres = Number(req.body.rayonMetres);
+      if (!nom || !isValidCoord(centreLat, centreLon)) {
+        return sendError(res, 'Coordonnées du centre invalides', 400);
+      }
+      if (!Number.isFinite(rayonMetres) || rayonMetres <= 0) {
+        return sendError(res, 'Rayon de la zone invalide', 400);
       }
       const data = await adminService.setGeofence(
-        id, String(nom), Number(centreLat), Number(centreLon), Number(rayonMetres)
+        id, String(nom), centreLat, centreLon, rayonMetres
       );
       return sendSuccess(res, 'Zone de sécurité configurée', data);
     } catch (err: any) {

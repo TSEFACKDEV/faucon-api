@@ -10,6 +10,15 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// vehicleName et userName sont des champs choisis par l'utilisateur et sont
+// interpolés tels quels dans le HTML de l'email ci-dessous — sans échappement,
+// un nom de véhicule du type <img src=x onerror=...> serait injecté dans le
+// mail envoyé (rendu par le client mail du destinataire).
+const escapeHtml = (value: string): string =>
+  value.replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c] as string));
+
 interface ReportMailData {
   toEmail:          string;
   userName:         string;
@@ -28,6 +37,9 @@ export const sendReportEmail = async (data: ReportMailData): Promise<void> => {
     distanceTotaleKm, vitesseMoyenne, vitesseMax,
     nbAlarmes, tempsArretMinutes,
   } = data;
+
+  const safeVehicleName = escapeHtml(vehicleName);
+  const safeUserName    = escapeHtml(userName);
 
   const heuresArret  = Math.floor(tempsArretMinutes / 60);
   const minutesArret = tempsArretMinutes % 60;
@@ -64,8 +76,8 @@ export const sendReportEmail = async (data: ReportMailData): Promise<void> => {
     <div class="logo">🦅 FAUCON</div>
     <div class="flag"><div class="f1"></div><div class="f2"></div><div class="f3"></div></div>
 
-    <div class="title">Rapport journalier — ${vehicleName}</div>
-    <div class="subtitle">Bonjour ${userName}, voici le résumé du ${date}</div>
+    <div class="title">Rapport journalier — ${safeVehicleName}</div>
+    <div class="subtitle">Bonjour ${safeUserName}, voici le résumé du ${date}</div>
 
     <div class="grid">
       <div class="stat">

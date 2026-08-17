@@ -1,12 +1,17 @@
 import{ prisma }from '../config/database';
 import { sendReportEmail } from '../services/mail.service';
+import { toIsoDateDouala } from './report.generator';
 
 /**
  * Envoie les notifications (email) pour tous les rapports
  * générés lors d'une journée donnée
  */
 export const sendReportNotifications = async (date: Date): Promise<void> => {
-  const dateStr = date.toISOString().split('T')[0];
+  // Même dérivation que generateVehicleReport (Douala, pas UTC) — sinon ce
+  // calcul peut retomber sur un jour calendaire différent de celui sous
+  // lequel les rapports viennent d'être enregistrés, et ne retrouve aucune
+  // ligne (silence total, aucun email envoyé, sans erreur visible).
+  const dateStr = toIsoDateDouala(date);
 
   console.log(`[NOTIF] Envoi des notifications pour le ${dateStr}`);
 

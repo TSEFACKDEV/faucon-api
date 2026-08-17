@@ -4,6 +4,7 @@ import { broadcastPosition, broadcastAlarm } from '../tracker/websocket.service'
 import { checkGeofence } from '../tracker/geofence.checker';
 import { checkSpeedLimit } from '../tracker/speed.checker';
 import { prisma } from '../config/database';
+import { hasRecentUnacknowledgedAlarm } from './alarm-dedup';
 
 interface PositionPayload {
   latitude: number;
@@ -32,20 +33,61 @@ export const handlePositionPayload = async (
     // (firmware → `raw` ET relais → `data`, TCP + MQTT redondants) ou être
     // redélivrée (QoS 1). On ne persiste qu'une position par véhicule pour un
     // même horodatage (± 2 s), sinon l'historique et la trace sont faussés.
-    const duplicate = await prisma.position.findFirst({
-      where: {
-        vehiculeId,
-        horodatage: {
-          gte: new Date(payload.timestamp.getTime() - 2000),
-          lte: new Date(payload.timestamp.getTime() + 2000),
+    //
+    // Le contrôle (findFirst) puis l'écriture (create) ne sont pas atomiques
+    // par nature : deux trames quasi simultanées pour le MÊME véhicule
+    // peuvent toutes deux passer le contrôle avant qu'aucune n'ait committé
+    // son insert. `pg_advisory_xact_lock` sérialise les écritures pour un
+    // même véhicule (verrou tenu le temps de la transaction, relâché au
+    // commit) sans verrouiller de ligne ni gêner les autres véhicules.
+    const isNewPosition = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${vehiculeId})::bigint)`;
+
+      const duplicate = await tx.position.findFirst({
+        where: {
+          vehiculeId,
+          horodatage: {
+            gte: new Date(payload.timestamp.getTime() - 2000),
+            lte: new Date(payload.timestamp.getTime() + 2000),
+          },
         },
-      },
-      select: { id: true },
+        select: { id: true },
+      });
+      if (duplicate) return false;
+
+      // 1. Sauvegarder la position
+      await tx.position.create({
+        data: {
+          vehiculeId,
+          latitude:      payload.latitude,
+          longitude:     payload.longitude,
+          vitesse:       payload.vitesse,
+          cap:           payload.cap,
+          nbSatellites:  payload.satellites,
+          niveauSignal:  payload.signal,
+          niveauBatterie: payload.battery,
+          statutACC:     payload.acc ?? false,
+          cyc:           payload.cycleNumber,
+          alr:           payload.alertCount,
+          horodatage:    payload.timestamp,
+        },
+      });
+
+      // 2. Mettre à jour la dernière communication du véhicule
+      await tx.vehicule.update({
+        where: { id: vehiculeId },
+        data: {
+          derniereCommunication: payload.timestamp,
+          niveauBatterie: payload.battery,
+        },
+      });
+
+      return true;
     });
 
     // Duplicata : on diffuse quand même en temps réel (le dashboard a besoin
     // de la fraîcheur) mais on ne crée pas de nouvelle rangée.
-    if (duplicate) {
+    if (!isNewPosition) {
       broadcastPosition(vehiculeId, {
         vehiculeId,
         latitude:  payload.latitude,
@@ -62,33 +104,6 @@ export const handlePositionPayload = async (
       console.log(`[POSITION] ${vehiculeId} → duplicata ignoré (${payload.source})`);
       return;
     }
-
-    // 1. Sauvegarder la position
-    await prisma.position.create({
-      data: {
-        vehiculeId,
-        latitude:      payload.latitude,
-        longitude:     payload.longitude,
-        vitesse:       payload.vitesse,
-        cap:           payload.cap,
-        nbSatellites:  payload.satellites,
-        niveauSignal:  payload.signal,
-        niveauBatterie: payload.battery,
-        statutACC:     payload.acc ?? false,
-        cyc:           payload.cycleNumber,
-        alr:           payload.alertCount,
-        horodatage:    payload.timestamp,
-      },
-    });
-
-    // 2. Mettre à jour la dernière communication du véhicule
-    await prisma.vehicule.update({
-      where: { id: vehiculeId },
-      data: {
-        derniereCommunication: payload.timestamp,
-        niveauBatterie: payload.battery,
-      },
-    });
 
     // 3. Broadcast WebSocket vers le dashboard admin
     broadcastPosition(vehiculeId, {
@@ -192,6 +207,10 @@ const recordEventAlarm = async (
   valeurMesuree?: number,
   seuilConfigure?: number
 ): Promise<void> => {
+  if (await hasRecentUnacknowledgedAlarm(vehiculeId, typeAlarme, 5 * 60 * 1000)) {
+    return;
+  }
+
   const alarme = await prisma.alarme.create({
     data: { vehiculeId, typeAlarme, latitude, longitude, horodatage, valeurMesuree, seuilConfigure },
   });

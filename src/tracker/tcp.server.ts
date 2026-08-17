@@ -10,6 +10,12 @@ import { findVehiculeByIdentifier } from '../services/vehicle-lookup.service';
 
 const TCP_PORT = Number(process.env.TCP_PORT ?? 5000);
 
+// Une trame légitime tient sur quelques centaines d'octets. Si un client
+// n'envoie jamais de '\n' (bug firmware ou flux malveillant), le fragment
+// incomplet s'accumulerait indéfiniment en mémoire à chaque connexion — on
+// ferme la connexion plutôt que de laisser grossir le buffer sans limite.
+const MAX_BUFFER_BYTES = 16 * 1024;
+
 // Map des connexions actives : imei → socket
 const activeConnections = new Map<string, net.Socket>();
 
@@ -40,6 +46,13 @@ export const startTcpServer = (): net.Server => {
       // Traitement ligne par ligne (délimiteur \n)
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? ''; // Garde le fragment incomplet
+
+      if (buffer.length > MAX_BUFFER_BYTES) {
+        console.warn(`[TCP] Fragment incomplet trop volumineux depuis ${clientAddr}, connexion fermée`);
+        sendResponse(socket, 'ERROR', 'Trame trop volumineuse');
+        socket.destroy();
+        return;
+      }
 
       const trames = parseTrame(lines.join('\n'));
 

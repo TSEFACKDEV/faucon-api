@@ -1,5 +1,6 @@
 import{ prisma }from '../config/database';
 import { haversineKm } from '../utils/geo';
+import { dayBounds, TZ_OFFSET_MIN } from '../utils/dayBounds';
 
 interface ReportStats {
   distanceTotaleKm:  number;
@@ -9,19 +10,25 @@ interface ReportStats {
   tempsArretMinutes: number;
 }
 
+// Convertit une Date (instant quelconque) en "jour calendaire" à Douala,
+// au format YYYY-MM-DD — jamais `.toISOString().split('T')[0]` seul, qui
+// donnerait le jour calendaire UTC (décalé d'~1h par rapport à Douala).
+export const toIsoDateDouala = (date: Date): string =>
+  new Date(date.getTime() + TZ_OFFSET_MIN * 60_000).toISOString().slice(0, 10);
+
 /**
- * Calcule toutes les statistiques de la journée pour un véhicule
+ * Calcule toutes les statistiques de la journée (calendaire, Douala) pour un
+ * véhicule.
  */
 export const computeDayStats = async (
   vehiculeId: string,
-  date: Date
+  isoDate: string
 ): Promise<ReportStats> => {
 
-  // Bornes de la journée
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
+  // Bornes de la journée — en heure de Douala (voir utils/dayBounds), jamais
+  // en heure locale du process serveur (souvent UTC en prod), sinon le
+  // rapport agrège le mauvais jour calendaire.
+  const { start, end } = dayBounds(isoDate);
 
   // Récupérer toutes les positions du jour ordonnées
   const positions = await prisma.position.findMany({
@@ -111,19 +118,24 @@ export const generateVehicleReport = async (
   date: Date
 ): Promise<void> => {
   try {
-    const stats = await computeDayStats(vehiculeId, date);
+    // Résolu UNE SEULE FOIS puis réutilisé pour la requête ET la colonne
+    // `date` stockée — sinon un dérivé différent (ex. `.toISOString()` brut,
+    // en UTC) pourrait enregistrer le rapport sous un autre jour calendaire
+    // que celui réellement agrégé par computeDayStats.
+    const isoDate = toIsoDateDouala(date);
+    const stats = await computeDayStats(vehiculeId, isoDate);
 
     // Upsert : crée ou écrase si le rapport existe déjà
     await prisma.rapportJournalier.upsert({
       where: {
         vehiculeId_date: {
           vehiculeId,
-          date: new Date(date.toISOString().split('T')[0]),
+          date: new Date(isoDate),
         },
       },
       create: {
         vehiculeId,
-        date:             new Date(date.toISOString().split('T')[0]),
+        date:             new Date(isoDate),
         distanceTotaleKm:  stats.distanceTotaleKm,
         vitesseMoyenne:    stats.vitesseMoyenne,
         vitesseMax:        stats.vitesseMax,
@@ -140,7 +152,7 @@ export const generateVehicleReport = async (
     });
 
     console.log(
-      `[RAPPORT] ✓ ${vehiculeId} — ${date.toISOString().split('T')[0]}` +
+      `[RAPPORT] ✓ ${vehiculeId} — ${isoDate}` +
       ` — ${stats.distanceTotaleKm}km — max:${stats.vitesseMax}km/h — alertes:${stats.nbAlarmes}`
     );
   } catch (err) {

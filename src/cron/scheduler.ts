@@ -3,6 +3,7 @@ import { generateAllReports } from './report.generator';
 import { sendReportNotifications } from './notification.sender';
 import {prisma} from '../config/database'; // Import statique corrigé
 import { broadcastCommandUpdate } from '../tracker/websocket.service';
+import { jourDecale } from '../utils/dayBounds';
 
 /**
  * Lance tous les CRON jobs de l'application
@@ -13,8 +14,9 @@ export const startCronJobs = (): void => {
   // Chaque nuit à 00:05 (5 min après minuit pour laisser arriver
   // les dernières trames de la journée précédente)
   cron.schedule('5 0 * * *', async () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
+    // Jour calendaire Douala, pas arithmétique locale du process serveur
+    // (souvent UTC en prod) — voir utils/dayBounds.
+    const yesterday = new Date(jourDecale(-1));
 
     console.log('\n[CRON] ⏰ Déclenchement rapport journalier...');
 

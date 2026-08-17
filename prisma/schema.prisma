@@ -225,5 +225,11 @@ model CommandeDescendante {
   dateEnvoi       DateTime       @default(now())
   dateReponse     DateTime?
 
+  // vehiculeId : utilisé par vehicleService.getCommandes (liste par véhicule).
+  // (statutExecution, dateEnvoi) : scanné CHAQUE MINUTE par le cron de
+  // nettoyage des commandes expirées (scheduler.ts) — sans index, full table
+  // scan récurrent qui se dégrade avec le volume.
+  @@index([vehiculeId])
+  @@index([statutExecution, dateEnvoi])
   @@map("commandes_descendantes")
 }

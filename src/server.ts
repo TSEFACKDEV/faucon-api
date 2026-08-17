@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './config/validateEnv';
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
@@ -13,12 +14,6 @@ import { startTcpServer } from './tracker/tcp.server';
 import { startMqttClient } from './tracker/mqtt.client';
 import { startCronJobs }  from './cron/scheduler';
 import { corsOrigins } from './config/cors';
-
-for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
-  if (!process.env[key]) {
-    throw new Error(`Variable d'environnement ${key} manquante — arrêt du serveur.`);
-  }
-}
 
 // Position.id est un BigInt (Prisma) — JSON.stringify ne sait pas le
 // sérialiser nativement. Fix global plutôt qu'au cas par cas : tout endpoint

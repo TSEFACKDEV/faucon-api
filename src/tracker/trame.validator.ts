@@ -1,4 +1,6 @@
-import { Trame, TramePosition, TrameEvent } from '../types/tracker.types';
+import { Trame, TramePosition, TrameEvent, TrameHeartbeat } from '../types/tracker.types';
+
+const VALID_MODES = ['WORK', 'MOVE', 'STANDBY'];
 
 // Exportées pour être réutilisées par les canaux HTTP/SMS (tracker.routes.ts),
 // qui doivent appliquer les mêmes bornes que le canal TCP plutôt que d'avoir
@@ -44,6 +46,20 @@ export const validateTrame = (trame: Trame): { valid: boolean; reason?: string }
     }
     if (!isValidCoord(t.lat, t.lon)) {
       return { valid: false, reason: `Coordonnées invalides` };
+    }
+  }
+
+  // HEARTBEAT était le seul type non validé (seul l'imei l'était, plus haut)
+  // — `heartbeat.handler.ts` écrit `trame.mode`/`trame.battery` tels quels en
+  // base, une trame malformée y provoquait une exception Prisma non anticipée
+  // au lieu d'un rejet propre ici, comme pour POSITION/EVENT.
+  if (trame.type === 'HEARTBEAT') {
+    const t = trame as TrameHeartbeat;
+    if (!isValidBattery(t.battery)) {
+      return { valid: false, reason: `Batterie invalide : ${t.battery}` };
+    }
+    if (!VALID_MODES.includes(t.mode)) {
+      return { valid: false, reason: `Mode invalide : ${t.mode}` };
     }
   }
 

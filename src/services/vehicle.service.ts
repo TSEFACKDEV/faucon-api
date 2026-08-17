@@ -3,6 +3,7 @@ import { AppError, NotFoundError } from '../utils/errors';
 import { findVehiculeByIdentifier } from './vehicle-lookup.service';
 import { publishCommand } from '../tracker/mqtt.client';
 import { EN_LIGNE_SEUIL_MS } from '../utils/constants';
+import { dayBounds } from '../utils/dayBounds';
 
 export type CodeCommande = 'LOCALISER' | 'MODE' | 'REDEMARRER' | 'RESET_USINE' | 'NUMERO_SMS';
 
@@ -294,10 +295,10 @@ export const vehicleService = {
     const vehicle = await prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
     if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
+    // Bornes en heure de Douala (voir utils/dayBounds), pas en heure locale
+    // du process serveur — sinon l'historique affiché à l'utilisateur est
+    // décalé d'environ 1h par rapport au vrai jour calendaire.
+    const { start, end } = dayBounds(date);
 
     return prisma.position.findMany({
       where: {
@@ -333,6 +334,9 @@ export const vehicleService = {
         } : {}),
       },
       orderBy: { horodatage: 'asc' },
+      // Plafond dur : sans from/to (ou avec une plage très large), une requête
+      // replay ne doit pas pouvoir ramener des centaines de milliers de lignes.
+      take: 10_000,
       select: {
         id: true, latitude: true, longitude: true,
         vitesse: true, cap: true, horodatage: true,
