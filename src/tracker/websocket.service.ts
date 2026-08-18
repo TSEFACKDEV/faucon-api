@@ -41,11 +41,17 @@ export const initWebSocket = (httpServer: HttpServer): void => {
     socket.on('subscribe', async (vehiculeIds: string[]) => {
       if (!Array.isArray(vehiculeIds) || vehiculeIds.length === 0) return;
 
+      // Limite stricte : un client ne peut pas s'abonner à plus de 50
+      // véhicules en une seule requête. Au-delà, c'est probablement une
+      // erreur côté client ou une tentative de surcharge du serveur.
+      const MAX_SUBSCRIBE = 50;
+      const ids = vehiculeIds.slice(0, MAX_SUBSCRIBE);
+
       const isAdmin = (socket as AuthenticatedSocket).data.role === 'ADMIN';
       const owned = isAdmin
-        ? await prisma.vehicule.findMany({ where: { id: { in: vehiculeIds } }, select: { id: true } })
+        ? await prisma.vehicule.findMany({ where: { id: { in: ids } }, select: { id: true } })
         : await prisma.vehicule.findMany({
-            where: { id: { in: vehiculeIds }, utilisateurId },
+            where: { id: { in: ids }, utilisateurId },
             select: { id: true },
           });
 

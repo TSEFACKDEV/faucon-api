@@ -31,5 +31,5 @@ export const notFound = (
   req: Request,
   res: Response
 ): void => {
-  sendError(res, `Route ${req.originalUrl} introuvable`, 404);
+  sendError(res, 'Route introuvable', 404);
 };

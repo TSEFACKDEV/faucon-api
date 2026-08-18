@@ -191,6 +191,13 @@ const checkBatteryLevel = async (
     },
   });
 
+  broadcastAlarm(vehiculeId, {
+    typeAlarme:   'BATTERIE_FAIBLE',
+    latitude,
+    longitude,
+    horodatage:   new Date().toISOString(),
+  });
+
   console.warn(`[ALARM] BATTERIE_FAIBLE — ${vehiculeId} — ${battery}%`);
 };
 

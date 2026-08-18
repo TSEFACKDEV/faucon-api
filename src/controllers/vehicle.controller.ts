@@ -219,20 +219,6 @@ export const vehicleController = {
     }
   },
 
-  getReplay: async (req: AuthRequest, res: Response) => {
-    try {
-      const id = getParamId(req.params.id);
-      if (!id) return sendError(res, 'ID du véhicule requis', 400);
-
-      const from = req.query.from as string | undefined;
-      const to = req.query.to as string | undefined;
-      const positions = await vehicleService.getPositionHistoryRange(id, req.user!.id, from, to);
-      return sendSuccess(res, 'Replay récupéré', positions);
-    } catch (err: any) {
-      return sendError(res, err.message, err.statusCode ?? 400);
-    }
-  },
-
   getDailyReport: async (req: AuthRequest, res: Response) => {
     try {
       const id = getParamId(req.params.id);

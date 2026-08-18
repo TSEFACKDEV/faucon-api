@@ -38,6 +38,8 @@ export const rateLimit = (maxRequests: number, windowMs: number) => {
     }
 
     if (bucket.count >= maxRequests) {
+      const retryAfterSec = Math.ceil((bucket.resetAt - now) / 1000);
+      res.setHeader('Retry-After', String(retryAfterSec));
       sendError(res, 'Trop de tentatives, réessayez plus tard', 429);
       return;
     }

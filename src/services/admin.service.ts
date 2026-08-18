@@ -85,6 +85,19 @@ export const adminService = {
     });
     const positionParVehicule = new Map(dernieres.map((p) => [p.vehiculeId, p]));
 
+    // Nombre de jours actifs par traceur — calcul côté serveur à partir des
+    // positions (données immuables, non altérable par le client).
+    const vehiculeIds = vehicules.map(v => v.id);
+    const joursRows = vehiculeIds.length > 0
+      ? await prisma.$queryRaw<{ vehiculeId: string; count: bigint }[]>`
+          SELECT vehiculeId, COUNT(DISTINCT DATE(horodatage)) as count
+          FROM positions
+          WHERE vehiculeId = ANY(${vehiculeIds})
+          GROUP BY vehiculeId
+        `
+      : [];
+    const joursMap = new Map(joursRows.map(r => [r.vehiculeId, Number(r.count)]));
+
     const maintenant = Date.now();
     return vehicules.map((v) => {
       const pos = positionParVehicule.get(v.id);
@@ -97,6 +110,7 @@ export const adminService = {
         niveauBatterie: v.niveauBatterie,
         estActif: v.estActif,
         dateAjout: v.dateAjout,
+        joursActifs: joursMap.get(v.id) ?? 0,
         derniereCommunication: v.derniereCommunication,
         latitude: pos?.latitude ?? null,
         longitude: pos?.longitude ?? null,

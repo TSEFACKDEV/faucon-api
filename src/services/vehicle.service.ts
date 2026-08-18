@@ -20,6 +20,18 @@ const findOwnedAlarme = (alarmeId: string, utilisateurId?: string) =>
     ? prisma.alarme.findFirst({ where: { id: alarmeId, vehicule: { utilisateurId } } })
     : prisma.alarme.findUnique({ where: { id: alarmeId } });
 
+// Nombre de jours distincts durant lesquels le traceur a émis au moins une
+// position. Calculé côté serveur à partir de la table `positions` (données
+// immuables) — le client ne peut pas modifier cette valeur.
+const countJoursActifs = async (vehiculeId: string): Promise<number> => {
+  const result = await prisma.$queryRaw<[{ count: bigint }]>`
+    SELECT COUNT(DISTINCT DATE(horodatage)) as count
+    FROM positions
+    WHERE vehiculeId = ${vehiculeId}
+  `;
+  return Number(result[0]?.count ?? 0);
+};
+
 // Format international minimal (+237XXXXXXXXX) — le firmware refait de
 // toute façon sa propre validation avant d'accepter la commande, celle-ci
 // n'est là que pour rejeter les erreurs de saisie évidentes tout de suite.
@@ -131,6 +143,18 @@ export const vehicleService = {
     });
     const positionParVehicule = new Map(dernieres.map((p) => [p.vehiculeId, p]));
 
+    // Nombre de jours actifs par traceur — une seule requête GROUP BY.
+    const vehiculeIds = vehicules.map(v => v.id);
+    const joursRows = vehiculeIds.length > 0
+      ? await prisma.$queryRaw<{ vehiculeId: string; count: bigint }[]>`
+          SELECT vehiculeId, COUNT(DISTINCT DATE(horodatage)) as count
+          FROM positions
+          WHERE vehiculeId = ANY(${vehiculeIds})
+          GROUP BY vehiculeId
+        `
+      : [];
+    const joursMap = new Map(joursRows.map(r => [r.vehiculeId, Number(r.count)]));
+
     const maintenant = Date.now();
     return vehicules.map((v) => {
       const pos = positionParVehicule.get(v.id);
@@ -139,6 +163,7 @@ export const vehicleService = {
         latitude: pos?.latitude ?? null,
         longitude: pos?.longitude ?? null,
         enLigne: !!v.derniereCommunication && maintenant - v.derniereCommunication.getTime() < EN_LIGNE_SEUIL_MS,
+        joursActifs: joursMap.get(v.id) ?? 0,
       };
     });
   },
@@ -157,7 +182,9 @@ export const vehicleService = {
       },
     });
     if (!vehicle) throw new NotFoundError('Véhicule introuvable');
-    return vehicle;
+
+    const joursActifs = await countJoursActifs(id);
+    return { ...vehicle, joursActifs };
   },
 
   updateVehicle: async (id: string, utilisateurId: string, data: { nom?: string; image?: string }) => {

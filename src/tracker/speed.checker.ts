@@ -1,5 +1,6 @@
 import { prisma } from "../config/database";
-
+import { hasRecentUnacknowledgedAlarm } from "./alarm-dedup";
+import { broadcastAlarm } from "./websocket.service";
 
 export const checkSpeedLimit = async (
   vehiculeId: string,
@@ -14,19 +15,11 @@ export const checkSpeedLimit = async (
   if (!limit || !limit.estActive) return;
   if (speed <= limit.seuilKmh) return;
 
-  // Éviter les doublons dans la même minute
-  const recent = await prisma.alarme.findFirst({
-    where: {
-      vehiculeId,
-      typeAlarme:   'VITESSE_EXCESSIVE',
-      estAcquittee: false,
-      horodatage:   { gte: new Date(Date.now() - 60 * 1000) },
-    },
-  });
+  if (await hasRecentUnacknowledgedAlarm(vehiculeId, 'VITESSE_EXCESSIVE', 60 * 1000)) {
+    return;
+  }
 
-  if (recent) return;
-
-  await prisma.alarme.create({
+  const alarme = await prisma.alarme.create({
     data: {
       vehiculeId,
       typeAlarme:    'VITESSE_EXCESSIVE',
@@ -36,6 +29,15 @@ export const checkSpeedLimit = async (
       seuilConfigure: limit.seuilKmh,
       horodatage:    new Date(),
     },
+  });
+
+  broadcastAlarm(vehiculeId, {
+    id:           alarme.id,
+    vehiculeId,
+    typeAlarme:   'VITESSE_EXCESSIVE',
+    latitude,
+    longitude,
+    horodatage:   alarme.horodatage.toISOString(),
   });
 
   console.warn(`[ALARM] VITESSE_EXCESSIVE — ${vehiculeId} — ${speed}km/h > seuil: ${limit.seuilKmh}km/h`);

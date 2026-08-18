@@ -1,11 +1,17 @@
 import { Router } from 'express';
 import { vehicleController } from '../controllers/vehicle.controller';
 import { protect } from '../middlewares/auth.middleware';
+import { rateLimit } from '../middlewares/rateLimit.middleware';
 
 const router = Router();
 
 // Toutes les routes véhicules sont protégées
 router.use(protect);
+
+// Limitation de débit : 60 requêtes par minute par IP (suffisant pour un
+// usage normal — un widget du dashboard rafraîchit toutes les ~10s, donc
+// ~6 appels/minute par onglet actif).
+router.use(rateLimit(60, 60_000));
 
 router.post('/connect',                      vehicleController.addVehicle);
 router.post('/',                              vehicleController.addVehicle);
@@ -23,7 +29,6 @@ router.post('/:id/commandes',                 vehicleController.sendCommande);
 router.get('/:id/commandes',                  vehicleController.getCommandes);
 
 router.get('/:id/position/last',              vehicleController.getLastPosition);
-router.get('/:id/replay',                     vehicleController.getReplay);
 router.get('/:id/position/history',           vehicleController.getPositionHistory);
 router.get('/:id/report/daily',               vehicleController.getDailyReport);
 router.get('/:id/alarmes',                    vehicleController.getAlarmes);

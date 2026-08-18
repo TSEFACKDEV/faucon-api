@@ -32,12 +32,6 @@ enum TypeAlarme {
   BATTERIE_FAIBLE
 }
 
-enum CanalNotification {
-  SMS
-  PUSH
-  EMAIL
-}
-
 enum StatutCommande {
   PENDING
   SUCCESS
@@ -97,7 +91,6 @@ model Vehicule {
   positions             Position[]
   alarmes               Alarme[]
   rapportsJournaliers   RapportJournalier[]
-  sessionsTrajet        SessionTrajet[]
   commandes             CommandeDescendante[]
 
   @@index([utilisateurId])
@@ -166,24 +159,9 @@ model Alarme {
   horodatage       DateTime
   dateCreation     DateTime   @default(now())
 
-  notifications    Notification[]
-
   @@index([vehiculeId, horodatage])
   @@index([estAcquittee])
   @@map("alarmes")
-}
-
-model Notification {
-  id           String            @id @default(uuid())
-  alarmeId     String
-  alarme       Alarme            @relation(fields: [alarmeId], references: [id], onDelete: Cascade)
-  canal        CanalNotification
-  contenu      String
-  estEnvoyee   Boolean           @default(false)
-  dateEnvoi    DateTime?
-  dateCreation DateTime          @default(now())
-
-  @@map("notifications")
 }
 
 model RapportJournalier {
@@ -200,19 +178,6 @@ model RapportJournalier {
 
   @@unique([vehiculeId, date])
   @@map("rapports_journaliers")
-}
-
-model SessionTrajet {
-  id           String    @id @default(uuid())
-  vehiculeId   String
-  vehicule     Vehicule  @relation(fields: [vehiculeId], references: [id], onDelete: Cascade)
-  dateDebut    DateTime
-  dateFin      DateTime?
-  distanceKm   Float     @default(0)
-  dureeMinutes Int?
-
-  @@index([vehiculeId, dateDebut])
-  @@map("sessions_trajet")
 }
 
 model CommandeDescendante {

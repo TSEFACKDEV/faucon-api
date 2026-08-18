@@ -1,5 +1,7 @@
 import { prisma } from "../config/database";
 import { haversineMeters } from "../utils/geo";
+import { hasRecentUnacknowledgedAlarm } from "./alarm-dedup";
+import { broadcastAlarm } from "./websocket.service";
 
 export const checkGeofence = async (
   vehiculeId: string,
@@ -22,19 +24,11 @@ export const checkGeofence = async (
 
   if (!isOutside) return;
 
-  // Vérifier qu'il n'y a pas déjà une alarme non acquittée récente
-  const recent = await prisma.alarme.findFirst({
-    where: {
-      vehiculeId,
-      typeAlarme:   'SORTIE_ZONE',
-      estAcquittee: false,
-      horodatage:   { gte: new Date(Date.now() - 5 * 60 * 1000) }, // 5 min
-    },
-  });
+  if (await hasRecentUnacknowledgedAlarm(vehiculeId, 'SORTIE_ZONE', 5 * 60 * 1000)) {
+    return;
+  }
 
-  if (recent) return;
-
-  await prisma.alarme.create({
+  const alarme = await prisma.alarme.create({
     data: {
       vehiculeId,
       typeAlarme:    'SORTIE_ZONE',
@@ -44,6 +38,15 @@ export const checkGeofence = async (
       seuilConfigure: geofence.rayonMetres,
       horodatage:    new Date(),
     },
+  });
+
+  broadcastAlarm(vehiculeId, {
+    id:           alarme.id,
+    vehiculeId,
+    typeAlarme:   'SORTIE_ZONE',
+    latitude:     lat,
+    longitude:    lon,
+    horodatage:   alarme.horodatage.toISOString(),
   });
 
   console.warn(`[ALARM] SORTIE_ZONE — ${vehiculeId} — distance: ${Math.round(distance)}m > rayon: ${geofence.rayonMetres}m`);
