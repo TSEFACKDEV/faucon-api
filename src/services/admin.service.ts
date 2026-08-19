@@ -63,6 +63,13 @@ export const adminService = {
   supprimerUtilisateur: async (id: string) => {
     const utilisateur = await prisma.utilisateur.findUnique({ where: { id } });
     if (!utilisateur) throw new NotFoundError('Utilisateur introuvable');
+    // Un compte ADMIN ne peut jamais être supprimé depuis cette interface —
+    // sans ce garde-fou, un admin pouvait se supprimer lui-même (ou un autre
+    // admin) et perdre tout accès au dashboard, sans recours autre qu'un
+    // accès direct à la base de données.
+    if (utilisateur.role === 'ADMIN') {
+      throw new AppError('Un compte administrateur ne peut pas être supprimé', 403);
+    }
     await prisma.utilisateur.delete({ where: { id } });
   },
 
