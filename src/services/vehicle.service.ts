@@ -27,7 +27,7 @@ const countJoursActifs = async (vehiculeId: string): Promise<number> => {
   const result = await prisma.$queryRaw<[{ count: bigint }]>`
     SELECT COUNT(DISTINCT DATE(horodatage)) as count
     FROM positions
-    WHERE vehiculeId = ${vehiculeId}
+    WHERE "vehiculeId" = ${vehiculeId}
   `;
   return Number(result[0]?.count ?? 0);
 };
@@ -147,10 +147,10 @@ export const vehicleService = {
     const vehiculeIds = vehicules.map(v => v.id);
     const joursRows = vehiculeIds.length > 0
       ? await prisma.$queryRaw<{ vehiculeId: string; count: bigint }[]>`
-          SELECT vehiculeId, COUNT(DISTINCT DATE(horodatage)) as count
+          SELECT "vehiculeId", COUNT(DISTINCT DATE(horodatage)) as count
           FROM positions
-          WHERE vehiculeId = ANY(${vehiculeIds})
-          GROUP BY vehiculeId
+          WHERE "vehiculeId" = ANY(${vehiculeIds})
+          GROUP BY "vehiculeId"
         `
       : [];
     const joursMap = new Map(joursRows.map(r => [r.vehiculeId, Number(r.count)]));
