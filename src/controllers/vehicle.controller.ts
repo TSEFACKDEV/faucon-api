@@ -152,6 +152,36 @@ export const vehicleController = {
     }
   },
 
+  // Demande au traceur ses informations matérielles et logicielles
+  // (modèle, version du firmware, mode appliqué) — commande INFO.
+  readInfos: async (req: AuthRequest, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID du véhicule requis', 400);
+
+      const commande = await vehicleService.readInfos(id, req.user!.id);
+      return sendSuccess(res, 'Lecture des informations demandée au traceur', commande, 201);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
+  // Historique des diagnostics périodiques reçus du traceur (canal /diag).
+  getDiagnostics: async (req: AuthRequest, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID du véhicule requis', 400);
+
+      const limite = Number(req.query.limite ?? 50);
+      const diagnostics = await vehicleService.getDiagnostics(
+        id, req.user!.id, Number.isFinite(limite) ? limite : 50
+      );
+      return sendSuccess(res, 'Diagnostics récupérés', diagnostics);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
   setPhoneAlerte: async (req: AuthRequest, res: Response) => {
     try {
       const id = getParamId(req.params.id);
@@ -174,7 +204,7 @@ export const vehicleController = {
       if (!id) return sendError(res, 'ID du véhicule requis', 400);
 
       const { codeCommande, valeur } = req.body;
-      const codesValides: string[] = ['LOCALISER', 'MODE', 'MODE?', 'REDEMARRER', 'RESET_USINE', 'NUMERO_SMS'];
+      const codesValides: string[] = ['LOCALISER', 'MODE', 'MODE?', 'INFO', 'REDEMARRER', 'RESET_USINE', 'NUMERO_SMS'];
       if (!codesValides.includes(codeCommande)) {
         return sendError(res, `Commande invalide (${codesValides.join(' | ')})`, 400);
       }

@@ -167,6 +167,33 @@ export const adminController = {
     }
   },
 
+  // Demande au traceur ses infos matérielles / logicielles (commande INFO).
+  readInfos: async (req: Request, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID traceur requis', 400);
+      const data = await adminService.readInfos(id);
+      return sendSuccess(res, 'Lecture des informations demandée au traceur', data, 201);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
+  // Historique des diagnostics périodiques reçus du traceur (canal /diag).
+  getDiagnostics: async (req: Request, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID traceur requis', 400);
+      const limite = Number(req.query.limite ?? 50);
+      const data = await adminService.getDiagnostics(
+        id, Number.isFinite(limite) ? limite : 50
+      );
+      return sendSuccess(res, 'Diagnostics récupérés', data);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
   setMode: async (req: Request, res: Response) => {
     try {
       const id = getParamId(req.params.id);

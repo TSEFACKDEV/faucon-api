@@ -4,6 +4,7 @@ import { handlePositionPayload } from './position.handler';
 import { findVehiculeByIdentifier } from '../services/vehicle-lookup.service';
 import { isValidCoord, isValidSpeed, isValidBattery } from './trame.validator';
 import { handleCommandAck } from './command-ack.handler';
+import { handleDiagMessage } from './diag.handler';
 import { mapTrackerEvent } from './event-codes';
 
 let client: MqttClient | null = null;
@@ -264,6 +265,12 @@ export const startMqttClient = (): void => {
       if (err) console.error('[MQTT] Erreur abonnement ack :', err);
       else console.log('[MQTT] Abonné à faucon/+/ack');
     });
+    // Canal "diag" : diagnostic périodique du firmware v12.1 (état de santé
+    // du boîtier toutes les 5 minutes + mode réellement appliqué).
+    client!.subscribe('faucon/+/diag', { qos: 1 }, (err) => {
+      if (err) console.error('[MQTT] Erreur abonnement diag :', err);
+      else console.log('[MQTT] Abonné à faucon/+/diag');
+    });
   });
 
   client.on('message', (topic, payloadBuffer) => {
@@ -275,6 +282,10 @@ export const startMqttClient = (): void => {
 
     if (topic.endsWith('/ack')) {
       handleAckMessage(trackerId, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement ack :', err));
+      return;
+    }
+    if (topic.endsWith('/diag')) {
+      handleDiagMessage(trackerId, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement diag :', err));
       return;
     }
     if (topic.endsWith('/raw')) {

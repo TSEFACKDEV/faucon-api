@@ -33,6 +33,8 @@ router.delete('/vehicules/:id', adminController.supprimerVehicule);
 router.post('/vehicules/:id/commandes', adminController.sendCommande);
 router.put('/vehicules/:id/mode', adminController.setMode);
 router.post('/vehicules/:id/mode/read', adminController.readMode);
+router.post('/vehicules/:id/infos', adminController.readInfos);
+router.get('/vehicules/:id/diagnostics', adminController.getDiagnostics);
 router.put('/vehicules/:id/speed-limit', adminController.setSpeedLimit);
 router.put('/vehicules/:id/geofence', adminController.setGeofence);
 router.put('/vehicules/:id/telephone-alerte', adminController.setPhoneAlerte);

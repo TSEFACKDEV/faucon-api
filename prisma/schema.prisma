@@ -99,9 +99,66 @@ model Vehicule {
   alarmes               Alarme[]
   rapportsJournaliers   RapportJournalier[]
   commandes             CommandeDescendante[]
+  diagnostics           DiagnosticTraceur[]
 
   @@index([utilisateurId])
   @@map("vehicules")
+}
+
+// Diagnostic périodique publié par le firmware sur faucon/<trackerId>/diag
+// (toutes les 5 minutes, cf. publierDiag dans faucon_v12.ino). C'est la
+// seule source permettant de connaître l'état réel du boîtier : mode
+// appliqué, version du firmware, compteurs de reset, santé I2C, file
+// d'attente du journal flash, mémoire libre...
+model DiagnosticTraceur {
+  id            String   @id @default(uuid())
+  vehiculeId    String
+  vehicule      Vehicule @relation(fields: [vehiculeId], references: [id], onDelete: Cascade)
+  horodatage    DateTime @default(now())
+
+  // Identité matérielle et logicielle du boîtier.
+  modele        String?
+  version       String?
+  // Mode RÉELLEMENT appliqué (WORK / MOVE / STANDBY) — la valeur de
+  // référence, contrairement au modeActuel du véhicule qui peut être
+  // optimiste (commande envoyée mais pas encore acquittée).
+  mode          String?
+
+  // Diagnostic de redémarrage.
+  causeReset    String?
+  resetCode     Int?
+  dernierArret  String?
+  nbWatchdog    Int      @default(0)
+  nbBrownout    Int      @default(0)
+  nbPanique     Int      @default(0)
+
+  // GPS.
+  fixValide     Boolean  @default(false)
+  fixPerime     Boolean  @default(false)
+  ageFixSecondes Int?
+  satellites    Int?
+  hdop          Float?
+
+  // Énergie et réseau.
+  batteriePct   Int?
+  signalPct     Int?
+  signalValide  Boolean  @default(false)
+
+  // Santé du Traceur.
+  i2cRecuperations Int   @default(0)
+  i2cSuspendu   Boolean  @default(false)
+  journalOk     Boolean  @default(false)
+  positionsPerdues Int   @default(0)
+  fileNombre    Int?
+  sourceHeure   String?
+  heapLibre     Int?
+
+  // Payload diag complet, pour tracer les évolutions d'un champ absent
+  // du modèle (diagnostic complet et faithful du firmware).
+  brut          Json?
+
+  @@index([vehiculeId, horodatage])
+  @@map("diagnostics_traceurs")
 }
 
 model Position {

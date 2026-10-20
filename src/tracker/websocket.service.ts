@@ -90,3 +90,13 @@ export const broadcastVehicleMode = (vehiculeId: string, modeActuel: string): vo
   if (!io) return;
   io.to(`vehicle:${vehiculeId}`).emit('vehicle_mode', { vehiculeId, modeActuel });
 };
+
+// Notifie l'app mobile du dernier diagnostic reçu du traceur (canal
+// faucon/<trackerId>/diag, toutes les 5 minutes) : modèle, version du
+// firmware, compteurs de reset, santé I2C, file d'attente du journal
+// flash, mémoire libre. Permet d'afficher l'état réel du boîtier sans
+// interroger le traceur.
+export const broadcastDiagnostic = (vehiculeId: string, data: object): void => {
+  if (!io) return;
+  io.to(`vehicle:${vehiculeId}`).emit('diagnostic_update', data);
+};

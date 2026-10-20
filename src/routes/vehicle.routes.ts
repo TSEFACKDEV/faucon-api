@@ -26,6 +26,10 @@ router.put('/:id/mode',                       vehicleController.setMode);
 // Demande au traceur son mode actuel (lecture seule, sans valeur) — distinct
 // du PUT ci-dessus qui IMPOSE un mode.
 router.post('/:id/mode/read',                 vehicleController.readMode);
+// Demande au traceur ses infos matérielles / logicielles (modèle, version).
+router.post('/:id/infos',                    vehicleController.readInfos);
+// Historique des diagnostics périodiques reçus du traceur (canal /diag).
+router.get('/:id/diagnostics',               vehicleController.getDiagnostics);
 router.put('/:id/telephone-alerte',           vehicleController.setPhoneAlerte);
 
 router.post('/:id/commandes',                 vehicleController.sendCommande);

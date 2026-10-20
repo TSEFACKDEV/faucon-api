@@ -190,6 +190,14 @@ export const adminService = {
   readMode: async (vehiculeId: string) =>
     vehicleService.readMode(vehiculeId, undefined),
 
+  // Lecture des infos matérielles / logicielles du traceur (commande INFO).
+  readInfos: async (vehiculeId: string) =>
+    vehicleService.readInfos(vehiculeId, undefined),
+
+  // Historique des diagnostics périodiques reçus du traceur (canal /diag).
+  getDiagnostics: async (vehiculeId: string, limite?: number) =>
+    vehicleService.getDiagnostics(vehiculeId, undefined, limite),
+
   setSpeedLimit: async (vehiculeId: string, seuilKmh: number) =>
     vehicleService.setSpeedLimit(vehiculeId, undefined, seuilKmh),
 
