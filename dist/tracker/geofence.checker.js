@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.checkGeofence = void 0;
 const database_1 = require("../config/database");
 const geo_1 = require("../utils/geo");
+const alarm_dedup_1 = require("./alarm-dedup");
+const websocket_service_1 = require("./websocket.service");
 const checkGeofence = async (vehiculeId, lat, lon) => {
     const geofence = await database_1.prisma.perimetreGeofence.findUnique({
         where: { vehiculeId },
@@ -13,18 +15,10 @@ const checkGeofence = async (vehiculeId, lat, lon) => {
     const isOutside = distance > geofence.rayonMetres;
     if (!isOutside)
         return;
-    // Vérifier qu'il n'y a pas déjà une alarme non acquittée récente
-    const recent = await database_1.prisma.alarme.findFirst({
-        where: {
-            vehiculeId,
-            typeAlarme: 'SORTIE_ZONE',
-            estAcquittee: false,
-            horodatage: { gte: new Date(Date.now() - 5 * 60 * 1000) }, // 5 min
-        },
-    });
-    if (recent)
+    if (await (0, alarm_dedup_1.hasRecentUnacknowledgedAlarm)(vehiculeId, 'SORTIE_ZONE', 5 * 60 * 1000)) {
         return;
-    await database_1.prisma.alarme.create({
+    }
+    const alarme = await database_1.prisma.alarme.create({
         data: {
             vehiculeId,
             typeAlarme: 'SORTIE_ZONE',
@@ -34,6 +28,14 @@ const checkGeofence = async (vehiculeId, lat, lon) => {
             seuilConfigure: geofence.rayonMetres,
             horodatage: new Date(),
         },
+    });
+    (0, websocket_service_1.broadcastAlarm)(vehiculeId, {
+        id: alarme.id,
+        vehiculeId,
+        typeAlarme: 'SORTIE_ZONE',
+        latitude: lat,
+        longitude: lon,
+        horodatage: alarme.horodatage.toISOString(),
     });
     console.warn(`[ALARM] SORTIE_ZONE — ${vehiculeId} — distance: ${Math.round(distance)}m > rayon: ${geofence.rayonMetres}m`);
 };

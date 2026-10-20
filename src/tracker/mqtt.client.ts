@@ -1,4 +1,5 @@
 import mqtt, { MqttClient } from 'mqtt';
+import crypto from 'crypto';
 import { handlePositionPayload } from './position.handler';
 import { findVehiculeByIdentifier } from '../services/vehicle-lookup.service';
 import { isValidCoord, isValidSpeed, isValidBattery } from './trame.validator';
@@ -6,6 +7,15 @@ import { handleCommandAck } from './command-ack.handler';
 import { mapTrackerEvent } from './event-codes';
 
 let client: MqttClient | null = null;
+
+// Clé HMAC-SHA256 partagée avec le firmware (CMD_SIGN_KEY dans le .ino).
+// Utilisée pour signer les commandes descendantes et vérifier les ACK.
+const CMD_SIGN_KEY = process.env.COMMAND_SIGNING_KEY ?? '';
+
+const computeHmac = (data: string): string => {
+  if (!CMD_SIGN_KEY) return '';
+  return crypto.createHmac('sha256', CMD_SIGN_KEY).update(data).digest('hex');
+};
 
 // ────────────────────────────────────────────────────────────────────────
 // Canal « raw » (ce que publie réellement le firmware, cf. publierBrut dans
@@ -173,7 +183,7 @@ const handleDataMessage = async (trackerId: string, payloadBuffer: Buffer): Prom
 // Topic : faucon/<trackerId>/ack — réponse du traceur à une commande
 // descendante. Payload attendu :
 //   { "id": "<uuid CommandeDescendante>", "cmd": "...", "ok": true/false,
-//     "detail": "..." }
+//     "detail": "...", "trackerId": "...", "sig": "<hmac-sha256>" }
 const handleAckMessage = async (trackerId: string, payloadBuffer: Buffer): Promise<void> => {
   if (!trackerId) return;
 
@@ -186,15 +196,37 @@ const handleAckMessage = async (trackerId: string, payloadBuffer: Buffer): Promi
   }
 
   if (!payload.id || typeof payload.id !== 'string') return;
+
+  // Vérification HMAC du ACK (signé par le firmware avec CMD_SIGN_KEY).
+  // Le serveur vérifie que leACK vient bien du traceur légitime et n'a pas
+  // été injecté par un subscriber MQTT malveillant.
+  if (payload.sig && CMD_SIGN_KEY) {
+    const aVerifier = `${payload.ok ? 1 : 0}|${payload.detail ?? ''}`;
+    const sigCalculee = computeHmac(aVerifier);
+    if (sigCalculee && payload.sig !== sigCalculee) {
+      console.warn(`[MQTT] ACK falsifié pour ${trackerId} (cmd ${payload.id}) — signature invalide`);
+      return;
+    }
+  }
+
   await handleCommandAck(payload.id, !!payload.ok, payload.detail ? String(payload.detail) : undefined);
 };
 
 // Publie une commande descendante vers un traceur. Retourne false si le
 // canal MQTT n'est pas connecté (l'appelant doit alors marquer la
 // commande FAILED plutôt que de la laisser PENDING indéfiniment).
-export const publishCommand = (trackerId: string, payload: object): boolean => {
+export const publishCommand = (trackerId: string, payload: { id: string; cmd: string; valeur?: string }): boolean => {
   if (!client || !client.connected) return false;
-  client.publish(`faucon/${trackerId}/cmd`, JSON.stringify(payload), { qos: 1 });
+
+  // Signature HMAC : le firmware vérifie cette signature avant d'exécuter
+  // la commande, pour empêcher l'injection par un subscriber MQTT
+  // malveillant. Le payload signé est "cmd|valeur" (ou juste "cmd" si pas
+  // de valeur).
+  const aSigner = payload.valeur ? `${payload.cmd}|${payload.valeur}` : payload.cmd;
+  const sig = computeHmac(aSigner);
+
+  const signedPayload = { ...payload, sig };
+  client.publish(`faucon/${trackerId}/cmd`, JSON.stringify(signedPayload), { qos: 1 });
   return true;
 };
 

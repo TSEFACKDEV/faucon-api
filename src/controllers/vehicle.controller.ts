@@ -137,6 +137,21 @@ export const vehicleController = {
     }
   },
 
+  // Demande au traceur le mode qu'il applique réellement (commande MODE?).
+  // La réponse arrive par ACK — le handler d'ACK resynchronise la base et
+  // notifie l'app via WebSocket ; cette route ne fait qu'émettre la demande.
+  readMode: async (req: AuthRequest, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID du véhicule requis', 400);
+
+      const commande = await vehicleService.readMode(id, req.user!.id);
+      return sendSuccess(res, 'Lecture du mode demandée au traceur', commande, 201);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
   setPhoneAlerte: async (req: AuthRequest, res: Response) => {
     try {
       const id = getParamId(req.params.id);
@@ -159,12 +174,15 @@ export const vehicleController = {
       if (!id) return sendError(res, 'ID du véhicule requis', 400);
 
       const { codeCommande, valeur } = req.body;
-      const codesValides = ['LOCALISER', 'MODE', 'REDEMARRER', 'RESET_USINE'];
+      const codesValides: string[] = ['LOCALISER', 'MODE', 'MODE?', 'REDEMARRER', 'RESET_USINE', 'NUMERO_SMS'];
       if (!codesValides.includes(codeCommande)) {
         return sendError(res, `Commande invalide (${codesValides.join(' | ')})`, 400);
       }
       if (codeCommande === 'MODE' && !['WORK', 'MOVE', 'STANDBY'].includes(valeur)) {
         return sendError(res, 'Mode invalide (WORK | MOVE | STANDBY)', 400);
+      }
+      if (codeCommande === 'NUMERO_SMS' && !/^\+[1-9]\d{7,14}$/.test(valeur ?? '')) {
+        return sendError(res, 'Numéro invalide (format attendu : +237XXXXXXXXX)', 400);
       }
 
       const commande = await vehicleService.sendCommande(

@@ -7,7 +7,7 @@ import { getParamId } from '../utils/params';
 import { isValidCoord } from '../tracker/trame.validator';
 
 const ROLE_VALUES = ['UTILISATEUR', 'ADMIN'];
-const CODES_COMMANDE = ['LOCALISER', 'MODE', 'REDEMARRER', 'RESET_USINE'];
+const CODES_COMMANDE = ['LOCALISER', 'MODE', 'MODE?', 'REDEMARRER', 'RESET_USINE'];
 
 export const adminController = {
   // ── Utilisateurs ──────────────────────────────────────────────
@@ -149,6 +149,19 @@ export const adminController = {
 
       const lot = await provisionerLot(count, prefix);
       return sendSuccess(res, `${lot.length} traceur(s) provisionné(s)`, lot, 201);
+    } catch (err: any) {
+      return sendError(res, err.message, err.statusCode ?? 400);
+    }
+  },
+
+  // Demande au traceur son mode actuel (lecture seule) — la réponse arrive
+  // par ACK, qui resynchronise la base et notifie les clients connectés.
+  readMode: async (req: Request, res: Response) => {
+    try {
+      const id = getParamId(req.params.id);
+      if (!id) return sendError(res, 'ID traceur requis', 400);
+      const data = await adminService.readMode(id);
+      return sendSuccess(res, 'Lecture du mode demandée au traceur', data, 201);
     } catch (err: any) {
       return sendError(res, err.message, err.statusCode ?? 400);
     }

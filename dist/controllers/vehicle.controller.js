@@ -6,6 +6,7 @@ const response_1 = require("../utils/response");
 const database_1 = require("../config/database");
 const report_generator_1 = require("../cron/report.generator");
 const params_1 = require("../utils/params");
+const trame_validator_1 = require("../tracker/trame.validator");
 exports.vehicleController = {
     addVehicle: async (req, res) => {
         try {
@@ -73,10 +74,14 @@ exports.vehicleController = {
             const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
-            const { seuilKmh } = req.body;
-            if (!seuilKmh)
-                return (0, response_1.sendError)(res, 'Seuil requis', 400);
-            const result = await vehicle_service_1.vehicleService.setSpeedLimit(id, req.user.id, Number(seuilKmh));
+            // `!seuilKmh` rejetterait seulement les valeurs "falsy" (0, vide) mais
+            // laisserait passer une valeur négative ("-5" est truthy) — un seuil
+            // négatif rendrait toute vitesse mesurée "excessive" en continu.
+            const seuilKmh = Number(req.body.seuilKmh);
+            if (!Number.isFinite(seuilKmh) || seuilKmh <= 0 || seuilKmh > 300) {
+                return (0, response_1.sendError)(res, 'Seuil de vitesse invalide (entre 0 et 300 km/h)', 400);
+            }
+            const result = await vehicle_service_1.vehicleService.setSpeedLimit(id, req.user.id, seuilKmh);
             return (0, response_1.sendSuccess)(res, 'Limite de vitesse configurée', result);
         }
         catch (err) {
@@ -88,11 +93,22 @@ exports.vehicleController = {
             const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
-            const { nom, centreLat, centreLon, rayonMetres } = req.body;
-            if (!nom || !centreLat || !centreLon || !rayonMetres) {
-                return (0, response_1.sendError)(res, 'Tous les champs géofence sont requis', 400);
+            // `!centreLat`/`!centreLon` rejetterait à tort une coordonnée à 0°
+            // (l'équateur ou le méridien de Greenwich sont des latitudes/longitudes
+            // valides, 0 est "falsy" en JS) ; `!rayonMetres` laisse passer un rayon
+            // négatif ("-5" est truthy), qui ferait déclencher SORTIE_ZONE en boucle
+            // dès la position suivante (distance > rayon négatif est ~toujours vrai).
+            const { nom } = req.body;
+            const centreLat = Number(req.body.centreLat);
+            const centreLon = Number(req.body.centreLon);
+            const rayonMetres = Number(req.body.rayonMetres);
+            if (!nom || !(0, trame_validator_1.isValidCoord)(centreLat, centreLon)) {
+                return (0, response_1.sendError)(res, 'Coordonnées du centre invalides', 400);
             }
-            const result = await vehicle_service_1.vehicleService.setGeofence(id, req.user.id, nom, Number(centreLat), Number(centreLon), Number(rayonMetres));
+            if (!Number.isFinite(rayonMetres) || rayonMetres <= 0) {
+                return (0, response_1.sendError)(res, 'Rayon de la zone invalide', 400);
+            }
+            const result = await vehicle_service_1.vehicleService.setGeofence(id, req.user.id, nom, centreLat, centreLon, rayonMetres);
             return (0, response_1.sendSuccess)(res, 'Zone de sécurité configurée', result);
         }
         catch (err) {
@@ -110,6 +126,21 @@ exports.vehicleController = {
             }
             const result = await vehicle_service_1.vehicleService.setMode(id, req.user.id, mode);
             return (0, response_1.sendSuccess)(res, 'Mode mis à jour', result);
+        }
+        catch (err) {
+            return (0, response_1.sendError)(res, err.message, err.statusCode ?? 400);
+        }
+    },
+    // Demande au traceur le mode qu'il applique réellement (commande MODE?).
+    // La réponse arrive par ACK — le handler d'ACK resynchronise la base et
+    // notifie l'app via WebSocket ; cette route ne fait qu'émettre la demande.
+    readMode: async (req, res) => {
+        try {
+            const id = (0, params_1.getParamId)(req.params.id);
+            if (!id)
+                return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
+            const commande = await vehicle_service_1.vehicleService.readMode(id, req.user.id);
+            return (0, response_1.sendSuccess)(res, 'Lecture du mode demandée au traceur', commande, 201);
         }
         catch (err) {
             return (0, response_1.sendError)(res, err.message, err.statusCode ?? 400);
@@ -137,12 +168,15 @@ exports.vehicleController = {
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { codeCommande, valeur } = req.body;
-            const codesValides = ['LOCALISER', 'MODE', 'REDEMARRER', 'RESET_USINE'];
+            const codesValides = ['LOCALISER', 'MODE', 'MODE?', 'REDEMARRER', 'RESET_USINE', 'NUMERO_SMS'];
             if (!codesValides.includes(codeCommande)) {
                 return (0, response_1.sendError)(res, `Commande invalide (${codesValides.join(' | ')})`, 400);
             }
             if (codeCommande === 'MODE' && !['WORK', 'MOVE', 'STANDBY'].includes(valeur)) {
                 return (0, response_1.sendError)(res, 'Mode invalide (WORK | MOVE | STANDBY)', 400);
+            }
+            if (codeCommande === 'NUMERO_SMS' && !/^\+[1-9]\d{7,14}$/.test(valeur ?? '')) {
+                return (0, response_1.sendError)(res, 'Numéro invalide (format attendu : +237XXXXXXXXX)', 400);
             }
             const commande = await vehicle_service_1.vehicleService.sendCommande(id, req.user.id, codeCommande, valeur !== undefined ? { valeur } : undefined);
             return (0, response_1.sendSuccess)(res, 'Commande envoyée', commande, 201);
@@ -185,22 +219,8 @@ exports.vehicleController = {
             const date = req.query.date;
             const positions = from || to
                 ? await vehicle_service_1.vehicleService.getPositionHistoryRange(id, req.user.id, from, to)
-                : await vehicle_service_1.vehicleService.getPositionHistory(id, req.user.id, date ?? new Date().toISOString().split('T')[0]);
+                : await vehicle_service_1.vehicleService.getPositionHistory(id, req.user.id, date ?? (0, report_generator_1.toIsoDateDouala)(new Date()));
             return (0, response_1.sendSuccess)(res, 'Historique récupéré', positions);
-        }
-        catch (err) {
-            return (0, response_1.sendError)(res, err.message, err.statusCode ?? 400);
-        }
-    },
-    getReplay: async (req, res) => {
-        try {
-            const id = (0, params_1.getParamId)(req.params.id);
-            if (!id)
-                return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
-            const from = req.query.from;
-            const to = req.query.to;
-            const positions = await vehicle_service_1.vehicleService.getPositionHistoryRange(id, req.user.id, from, to);
-            return (0, response_1.sendSuccess)(res, 'Replay récupéré', positions);
         }
         catch (err) {
             return (0, response_1.sendError)(res, err.message, err.statusCode ?? 400);
@@ -211,7 +231,10 @@ exports.vehicleController = {
             const id = (0, params_1.getParamId)(req.params.id);
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
-            const date = req.query.date ?? new Date().toISOString().split('T')[0];
+            const date = req.query.date ?? (0, report_generator_1.toIsoDateDouala)(new Date());
+            if (date > (0, report_generator_1.toIsoDateDouala)(new Date())) {
+                return (0, response_1.sendError)(res, 'Impossible de générer un rapport pour une date future', 400);
+            }
             const report = await vehicle_service_1.vehicleService.getDailyReport(id, req.user.id, date);
             if (!report) {
                 await (0, report_generator_1.generateVehicleReport)(id, new Date(date));
@@ -268,6 +291,9 @@ exports.vehicleController = {
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { date } = req.body;
             const targetDate = date ? new Date(date) : new Date();
+            if ((0, report_generator_1.toIsoDateDouala)(targetDate) > (0, report_generator_1.toIsoDateDouala)(new Date())) {
+                return (0, response_1.sendError)(res, 'Impossible de générer un rapport pour une date future', 400);
+            }
             // 2. Utilisation de l'ID validé pour la vérification
             const vehicle = await database_1.prisma.vehicule.findFirst({
                 where: { id: id, utilisateurId: req.user.id },
@@ -276,10 +302,13 @@ exports.vehicleController = {
                 return (0, response_1.sendError)(res, 'Véhicule introuvable', 404);
             // 3. Utilisation de l'ID validé pour la génération
             await (0, report_generator_1.generateVehicleReport)(id, targetDate);
+            // Même dérivation que generateVehicleReport (Douala, pas UTC) — sinon
+            // on relit sous un jour calendaire différent de celui qui vient d'être
+            // écrit et on retombe systématiquement sur `report === null`.
             const report = await database_1.prisma.rapportJournalier.findFirst({
                 where: {
                     vehiculeId: id,
-                    date: new Date(targetDate.toISOString().split('T')[0]),
+                    date: new Date((0, report_generator_1.toIsoDateDouala)(targetDate)),
                 },
             });
             return (0, response_1.sendSuccess)(res, 'Rapport généré', report);

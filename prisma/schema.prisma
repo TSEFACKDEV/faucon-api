@@ -77,6 +77,13 @@ model Vehicule {
   // (indépendant du réseau/backend) — configurable depuis l'app, poussé au
   // traceur via la commande descendante NUMERO_SMS (cf. vehicle.service.ts).
   telephoneAlerte       String?
+  // Identifiants MQTT uniques par traceur (générés au provisionnement).
+  // Le firmware les lit depuis les Preferences ESP32 au démarrage et les
+  // utilise pour se connecter au broker. Remplace les credentials partagés
+  // (faucon_tracker/faucon) pour l'isolation : un traceur compromis ne peut
+  // plus publier/s'abonner aux topics d'un autre traceur.
+  mqttUser              String?
+  mqttPassword          String?
   modeActuel            ModeFonctionnement @default(MOVE)
   niveauBatterie        Int                @default(100)
   estActif              Boolean            @default(true)

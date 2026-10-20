@@ -6,6 +6,7 @@ const errors_1 = require("../utils/errors");
 const vehicle_lookup_service_1 = require("./vehicle-lookup.service");
 const mqtt_client_1 = require("../tracker/mqtt.client");
 const constants_1 = require("../utils/constants");
+const dayBounds_1 = require("../utils/dayBounds");
 // Vérifie l'appartenance du véhicule quand un propriétaire est fourni (app
 // mobile). Sans propriétaire (dashboard admin, rôle ADMIN déjà validé par le
 // middleware), l'accès n'est pas restreint.
@@ -15,6 +16,17 @@ const findOwnedVehicle = (vehiculeId, utilisateurId) => utilisateurId
 const findOwnedAlarme = (alarmeId, utilisateurId) => utilisateurId
     ? database_1.prisma.alarme.findFirst({ where: { id: alarmeId, vehicule: { utilisateurId } } })
     : database_1.prisma.alarme.findUnique({ where: { id: alarmeId } });
+// Nombre de jours distincts durant lesquels le traceur a émis au moins une
+// position. Calculé côté serveur à partir de la table `positions` (données
+// immuables) — le client ne peut pas modifier cette valeur.
+const countJoursActifs = async (vehiculeId) => {
+    const result = await database_1.prisma.$queryRaw `
+    SELECT COUNT(DISTINCT DATE(horodatage)) as count
+    FROM positions
+    WHERE "vehiculeId" = ${vehiculeId}
+  `;
+    return Number(result[0]?.count ?? 0);
+};
 // Format international minimal (+237XXXXXXXXX) — le firmware refait de
 // toute façon sa propre validation avant d'accepter la commande, celle-ci
 // n'est là que pour rejeter les erreurs de saisie évidentes tout de suite.
@@ -33,7 +45,7 @@ const envoyerCommande = async (vehiculeId, trackerId, codeCommande, parametres) 
     const envoyee = (0, mqtt_client_1.publishCommand)(trackerId, {
         id: commande.id,
         cmd: codeCommande,
-        valeur: parametres?.valeur,
+        valeur: parametres?.valeur != null ? String(parametres.valeur) : undefined,
     });
     if (!envoyee) {
         return database_1.prisma.commandeDescendante.update({
@@ -108,6 +120,17 @@ exports.vehicleService = {
             select: { vehiculeId: true, latitude: true, longitude: true },
         });
         const positionParVehicule = new Map(dernieres.map((p) => [p.vehiculeId, p]));
+        // Nombre de jours actifs par traceur — une seule requête GROUP BY.
+        const vehiculeIds = vehicules.map(v => v.id);
+        const joursRows = vehiculeIds.length > 0
+            ? await database_1.prisma.$queryRaw `
+          SELECT "vehiculeId", COUNT(DISTINCT DATE(horodatage)) as count
+          FROM positions
+          WHERE "vehiculeId" = ANY(${vehiculeIds})
+          GROUP BY "vehiculeId"
+        `
+            : [];
+        const joursMap = new Map(joursRows.map(r => [r.vehiculeId, Number(r.count)]));
         const maintenant = Date.now();
         return vehicules.map((v) => {
             const pos = positionParVehicule.get(v.id);
@@ -116,6 +139,7 @@ exports.vehicleService = {
                 latitude: pos?.latitude ?? null,
                 longitude: pos?.longitude ?? null,
                 enLigne: !!v.derniereCommunication && maintenant - v.derniereCommunication.getTime() < constants_1.EN_LIGNE_SEUIL_MS,
+                joursActifs: joursMap.get(v.id) ?? 0,
             };
         });
     },
@@ -134,7 +158,8 @@ exports.vehicleService = {
         });
         if (!vehicle)
             throw new errors_1.NotFoundError('Véhicule introuvable');
-        return vehicle;
+        const joursActifs = await countJoursActifs(id);
+        return { ...vehicle, joursActifs };
     },
     updateVehicle: async (id, utilisateurId, data) => {
         const vehicle = await database_1.prisma.vehicule.findFirst({ where: { id, utilisateurId } });
@@ -190,6 +215,20 @@ exports.vehicleService = {
             await (0, exports.envoyerCommande)(vehiculeId, vehicle.trackerId, 'MODE', { valeur: mode });
         }
         return updated;
+    },
+    // Demande au traceur quel mode il applique réellement (commande MODE?,
+    // sans valeur). Le mode est renvoyé dans l'ACK "detail" ; le handler
+    // d'ACK resynchronise alors la base et notifie l'app via WebSocket.
+    // Utile après un reboot du traceur (le mode est pourtant persisté en NVS
+    // depuis la v12 patchée) ou si l'app veut lever tout doute.
+    readMode: async (vehiculeId, utilisateurId) => {
+        const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
+        if (!vehicle)
+            throw new errors_1.NotFoundError('Véhicule introuvable');
+        if (!vehicle.trackerId) {
+            throw new errors_1.AppError("Ce traceur n'a pas encore d'identifiant MQTT connu — lecture impossible.", 400);
+        }
+        return (0, exports.envoyerCommande)(vehiculeId, vehicle.trackerId, 'MODE?');
     },
     // Numéro qui reçoit les SMS d'alerte envoyés directement par le traceur
     // (choc, conduite brutale, premier fix...). Même principe que setMode :
@@ -247,10 +286,10 @@ exports.vehicleService = {
         const vehicle = await database_1.prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } });
         if (!vehicle)
             throw new errors_1.NotFoundError('Véhicule introuvable');
-        const start = new Date(date);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(date);
-        end.setHours(23, 59, 59, 999);
+        // Bornes en heure de Douala (voir utils/dayBounds), pas en heure locale
+        // du process serveur — sinon l'historique affiché à l'utilisateur est
+        // décalé d'environ 1h par rapport au vrai jour calendaire.
+        const { start, end } = (0, dayBounds_1.dayBounds)(date);
         return database_1.prisma.position.findMany({
             where: {
                 vehiculeId,
@@ -279,6 +318,9 @@ exports.vehicleService = {
                 } : {}),
             },
             orderBy: { horodatage: 'asc' },
+            // Plafond dur : sans from/to (ou avec une plage très large), une requête
+            // replay ne doit pas pouvoir ramener des centaines de milliers de lignes.
+            take: 10000,
             select: {
                 id: true, latitude: true, longitude: true,
                 vitesse: true, cap: true, horodatage: true,

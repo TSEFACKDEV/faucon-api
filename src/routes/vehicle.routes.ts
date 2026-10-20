@@ -23,6 +23,9 @@ router.delete('/:id',                         vehicleController.deleteVehicle);
 router.put('/:id/speed-limit',                vehicleController.setSpeedLimit);
 router.put('/:id/geofence',                   vehicleController.setGeofence);
 router.put('/:id/mode',                       vehicleController.setMode);
+// Demande au traceur son mode actuel (lecture seule, sans valeur) — distinct
+// du PUT ci-dessus qui IMPOSE un mode.
+router.post('/:id/mode/read',                 vehicleController.readMode);
 router.put('/:id/telephone-alerte',           vehicleController.setPhoneAlerte);
 
 router.post('/:id/commandes',                 vehicleController.sendCommande);

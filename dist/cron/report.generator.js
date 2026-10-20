@@ -1,17 +1,23 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateAllReports = exports.generateVehicleReport = exports.computeDayStats = void 0;
+exports.generateAllReports = exports.generateVehicleReport = exports.computeDayStats = exports.toIsoDateDouala = void 0;
 const database_1 = require("../config/database");
 const geo_1 = require("../utils/geo");
+const dayBounds_1 = require("../utils/dayBounds");
+// Convertit une Date (instant quelconque) en "jour calendaire" à Douala,
+// au format YYYY-MM-DD — jamais `.toISOString().split('T')[0]` seul, qui
+// donnerait le jour calendaire UTC (décalé d'~1h par rapport à Douala).
+const toIsoDateDouala = (date) => new Date(date.getTime() + dayBounds_1.TZ_OFFSET_MIN * 60000).toISOString().slice(0, 10);
+exports.toIsoDateDouala = toIsoDateDouala;
 /**
- * Calcule toutes les statistiques de la journée pour un véhicule
+ * Calcule toutes les statistiques de la journée (calendaire, Douala) pour un
+ * véhicule.
  */
-const computeDayStats = async (vehiculeId, date) => {
-    // Bornes de la journée
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
+const computeDayStats = async (vehiculeId, isoDate) => {
+    // Bornes de la journée — en heure de Douala (voir utils/dayBounds), jamais
+    // en heure locale du process serveur (souvent UTC en prod), sinon le
+    // rapport agrège le mauvais jour calendaire.
+    const { start, end } = (0, dayBounds_1.dayBounds)(isoDate);
     // Récupérer toutes les positions du jour ordonnées
     const positions = await database_1.prisma.position.findMany({
         where: {
@@ -83,18 +89,23 @@ exports.computeDayStats = computeDayStats;
  */
 const generateVehicleReport = async (vehiculeId, date) => {
     try {
-        const stats = await (0, exports.computeDayStats)(vehiculeId, date);
+        // Résolu UNE SEULE FOIS puis réutilisé pour la requête ET la colonne
+        // `date` stockée — sinon un dérivé différent (ex. `.toISOString()` brut,
+        // en UTC) pourrait enregistrer le rapport sous un autre jour calendaire
+        // que celui réellement agrégé par computeDayStats.
+        const isoDate = (0, exports.toIsoDateDouala)(date);
+        const stats = await (0, exports.computeDayStats)(vehiculeId, isoDate);
         // Upsert : crée ou écrase si le rapport existe déjà
         await database_1.prisma.rapportJournalier.upsert({
             where: {
                 vehiculeId_date: {
                     vehiculeId,
-                    date: new Date(date.toISOString().split('T')[0]),
+                    date: new Date(isoDate),
                 },
             },
             create: {
                 vehiculeId,
-                date: new Date(date.toISOString().split('T')[0]),
+                date: new Date(isoDate),
                 distanceTotaleKm: stats.distanceTotaleKm,
                 vitesseMoyenne: stats.vitesseMoyenne,
                 vitesseMax: stats.vitesseMax,
@@ -109,7 +120,7 @@ const generateVehicleReport = async (vehiculeId, date) => {
                 tempsArretMinutes: stats.tempsArretMinutes,
             },
         });
-        console.log(`[RAPPORT] ✓ ${vehiculeId} — ${date.toISOString().split('T')[0]}` +
+        console.log(`[RAPPORT] ✓ ${vehiculeId} — ${isoDate}` +
             ` — ${stats.distanceTotaleKm}km — max:${stats.vitesseMax}km/h — alertes:${stats.nbAlarmes}`);
     }
     catch (err) {

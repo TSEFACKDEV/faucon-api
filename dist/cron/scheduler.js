@@ -9,6 +9,7 @@ const report_generator_1 = require("./report.generator");
 const notification_sender_1 = require("./notification.sender");
 const database_1 = require("../config/database"); // Import statique corrigé
 const websocket_service_1 = require("../tracker/websocket.service");
+const dayBounds_1 = require("../utils/dayBounds");
 /**
  * Lance tous les CRON jobs de l'application
  */
@@ -17,8 +18,9 @@ const startCronJobs = () => {
     // Chaque nuit à 00:05 (5 min après minuit pour laisser arriver
     // les dernières trames de la journée précédente)
     node_cron_1.default.schedule('5 0 * * *', async () => {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
+        // Jour calendaire Douala, pas arithmétique locale du process serveur
+        // (souvent UTC en prod) — voir utils/dayBounds.
+        const yesterday = new Date((0, dayBounds_1.jourDecale)(-1));
         console.log('\n[CRON] ⏰ Déclenchement rapport journalier...');
         try {
             // 1. Générer tous les rapports

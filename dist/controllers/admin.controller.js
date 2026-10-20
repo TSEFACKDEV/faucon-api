@@ -5,8 +5,9 @@ const admin_service_1 = require("../services/admin.service");
 const provisioning_service_1 = require("../services/provisioning.service");
 const response_1 = require("../utils/response");
 const params_1 = require("../utils/params");
+const trame_validator_1 = require("../tracker/trame.validator");
 const ROLE_VALUES = ['UTILISATEUR', 'ADMIN'];
-const CODES_COMMANDE = ['LOCALISER', 'MODE', 'REDEMARRER', 'RESET_USINE'];
+const CODES_COMMANDE = ['LOCALISER', 'MODE', 'MODE?', 'REDEMARRER', 'RESET_USINE'];
 exports.adminController = {
     // ── Utilisateurs ──────────────────────────────────────────────
     getUtilisateurs: async (_req, res) => {
@@ -158,6 +159,20 @@ exports.adminController = {
             return (0, response_1.sendError)(res, err.message, err.statusCode ?? 400);
         }
     },
+    // Demande au traceur son mode actuel (lecture seule) — la réponse arrive
+    // par ACK, qui resynchronise la base et notifie les clients connectés.
+    readMode: async (req, res) => {
+        try {
+            const id = (0, params_1.getParamId)(req.params.id);
+            if (!id)
+                return (0, response_1.sendError)(res, 'ID traceur requis', 400);
+            const data = await admin_service_1.adminService.readMode(id);
+            return (0, response_1.sendSuccess)(res, 'Lecture du mode demandée au traceur', data, 201);
+        }
+        catch (err) {
+            return (0, response_1.sendError)(res, err.message, err.statusCode ?? 400);
+        }
+    },
     setMode: async (req, res) => {
         try {
             const id = (0, params_1.getParamId)(req.params.id);
@@ -177,12 +192,13 @@ exports.adminController = {
     setSpeedLimit: async (req, res) => {
         try {
             const id = (0, params_1.getParamId)(req.params.id);
-            const { seuilKmh } = req.body;
             if (!id)
                 return (0, response_1.sendError)(res, 'ID traceur requis', 400);
-            if (!seuilKmh)
-                return (0, response_1.sendError)(res, 'Seuil requis', 400);
-            const data = await admin_service_1.adminService.setSpeedLimit(id, Number(seuilKmh));
+            const seuilKmh = Number(req.body.seuilKmh);
+            if (!Number.isFinite(seuilKmh) || seuilKmh <= 0 || seuilKmh > 300) {
+                return (0, response_1.sendError)(res, 'Seuil de vitesse invalide (entre 0 et 300 km/h)', 400);
+            }
+            const data = await admin_service_1.adminService.setSpeedLimit(id, seuilKmh);
             return (0, response_1.sendSuccess)(res, 'Limite de vitesse configurée', data);
         }
         catch (err) {
@@ -192,13 +208,19 @@ exports.adminController = {
     setGeofence: async (req, res) => {
         try {
             const id = (0, params_1.getParamId)(req.params.id);
-            const { nom, centreLat, centreLon, rayonMetres } = req.body;
             if (!id)
                 return (0, response_1.sendError)(res, 'ID traceur requis', 400);
-            if (!nom || !centreLat || !centreLon || !rayonMetres) {
-                return (0, response_1.sendError)(res, 'Tous les champs géofence sont requis', 400);
+            const { nom } = req.body;
+            const centreLat = Number(req.body.centreLat);
+            const centreLon = Number(req.body.centreLon);
+            const rayonMetres = Number(req.body.rayonMetres);
+            if (!nom || !(0, trame_validator_1.isValidCoord)(centreLat, centreLon)) {
+                return (0, response_1.sendError)(res, 'Coordonnées du centre invalides', 400);
             }
-            const data = await admin_service_1.adminService.setGeofence(id, String(nom), Number(centreLat), Number(centreLon), Number(rayonMetres));
+            if (!Number.isFinite(rayonMetres) || rayonMetres <= 0) {
+                return (0, response_1.sendError)(res, 'Rayon de la zone invalide', 400);
+            }
+            const data = await admin_service_1.adminService.setGeofence(id, String(nom), centreLat, centreLon, rayonMetres);
             return (0, response_1.sendSuccess)(res, 'Zone de sécurité configurée', data);
         }
         catch (err) {

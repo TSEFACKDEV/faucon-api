@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
+require("./config/validateEnv");
 const http_1 = __importDefault(require("http"));
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
@@ -18,11 +19,6 @@ const tcp_server_1 = require("./tracker/tcp.server");
 const mqtt_client_1 = require("./tracker/mqtt.client");
 const scheduler_1 = require("./cron/scheduler");
 const cors_2 = require("./config/cors");
-for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
-    if (!process.env[key]) {
-        throw new Error(`Variable d'environnement ${key} manquante — arrêt du serveur.`);
-    }
-}
 // Position.id est un BigInt (Prisma) — JSON.stringify ne sait pas le
 // sérialiser nativement. Fix global plutôt qu'au cas par cas : tout endpoint
 // qui renvoie une ligne Position (position/last, historique, replay) sinon

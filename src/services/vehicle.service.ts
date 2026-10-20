@@ -5,7 +5,7 @@ import { publishCommand } from '../tracker/mqtt.client';
 import { EN_LIGNE_SEUIL_MS } from '../utils/constants';
 import { dayBounds } from '../utils/dayBounds';
 
-export type CodeCommande = 'LOCALISER' | 'MODE' | 'REDEMARRER' | 'RESET_USINE' | 'NUMERO_SMS';
+export type CodeCommande = 'LOCALISER' | 'MODE' | 'MODE?' | 'REDEMARRER' | 'RESET_USINE' | 'NUMERO_SMS';
 
 // Vérifie l'appartenance du véhicule quand un propriétaire est fourni (app
 // mobile). Sans propriétaire (dashboard admin, rôle ADMIN déjà validé par le
@@ -57,7 +57,7 @@ export const envoyerCommande = async (
   const envoyee = publishCommand(trackerId, {
     id: commande.id,
     cmd: codeCommande,
-    valeur: parametres?.valeur,
+    valeur: parametres?.valeur != null ? String(parametres.valeur) : undefined,
   });
 
   if (!envoyee) {
@@ -253,6 +253,20 @@ export const vehicleService = {
     }
 
     return updated;
+  },
+
+  // Demande au traceur quel mode il applique réellement (commande MODE?,
+  // sans valeur). Le mode est renvoyé dans l'ACK "detail" ; le handler
+  // d'ACK resynchronise alors la base et notifie l'app via WebSocket.
+  // Utile après un reboot du traceur (le mode est pourtant persisté en NVS
+  // depuis la v12 patchée) ou si l'app veut lever tout doute.
+  readMode: async (vehiculeId: string, utilisateurId: string | undefined) => {
+    const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
+    if (!vehicle.trackerId) {
+      throw new AppError("Ce traceur n'a pas encore d'identifiant MQTT connu — lecture impossible.", 400);
+    }
+    return envoyerCommande(vehiculeId, vehicle.trackerId, 'MODE?');
   },
 
   // Numéro qui reçoit les SMS d'alerte envoyés directement par le traceur

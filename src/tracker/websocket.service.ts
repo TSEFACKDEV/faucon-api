@@ -82,3 +82,11 @@ export const broadcastCommandUpdate = (vehiculeId: string, data: object): void =
   if (!io) return;
   io.to(`vehicle:${vehiculeId}`).emit('commande_update', data);
 };
+
+// Notifie l'app mobile du mode RÉELLEMENT appliqué par le traceur (confirmé
+// par l'ACK d'une commande MODE ou MODE?). Émis uniquement quand le mode
+// change — l'app n'a pas à le deviner ni à le redemander.
+export const broadcastVehicleMode = (vehiculeId: string, modeActuel: string): void => {
+  if (!io) return;
+  io.to(`vehicle:${vehiculeId}`).emit('vehicle_mode', { vehiculeId, modeActuel });
+};

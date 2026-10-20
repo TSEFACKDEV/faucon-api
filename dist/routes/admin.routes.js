@@ -24,6 +24,7 @@ router.patch('/vehicules/:id', admin_controller_1.adminController.updateVehicule
 router.delete('/vehicules/:id', admin_controller_1.adminController.supprimerVehicule);
 router.post('/vehicules/:id/commandes', admin_controller_1.adminController.sendCommande);
 router.put('/vehicules/:id/mode', admin_controller_1.adminController.setMode);
+router.post('/vehicules/:id/mode/read', admin_controller_1.adminController.readMode);
 router.put('/vehicules/:id/speed-limit', admin_controller_1.adminController.setSpeedLimit);
 router.put('/vehicules/:id/geofence', admin_controller_1.adminController.setGeofence);
 router.put('/vehicules/:id/telephone-alerte', admin_controller_1.adminController.setPhoneAlerte);

@@ -5,12 +5,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startMqttClient = exports.publishCommand = void 0;
 const mqtt_1 = __importDefault(require("mqtt"));
+const crypto_1 = __importDefault(require("crypto"));
 const position_handler_1 = require("./position.handler");
 const vehicle_lookup_service_1 = require("../services/vehicle-lookup.service");
 const trame_validator_1 = require("./trame.validator");
 const command_ack_handler_1 = require("./command-ack.handler");
 const event_codes_1 = require("./event-codes");
 let client = null;
+// Clé HMAC-SHA256 partagée avec le firmware (CMD_SIGN_KEY dans le .ino).
+// Utilisée pour signer les commandes descendantes et vérifier les ACK.
+const CMD_SIGN_KEY = process.env.COMMAND_SIGNING_KEY ?? '';
+const computeHmac = (data) => {
+    if (!CMD_SIGN_KEY)
+        return '';
+    return crypto_1.default.createHmac('sha256', CMD_SIGN_KEY).update(data).digest('hex');
+};
 // ────────────────────────────────────────────────────────────────────────
 // Canal « raw » (ce que publie réellement le firmware, cf. publierBrut dans
 // l'ino) :
@@ -26,10 +35,15 @@ let client = null;
 //   - value/threshold  valeurs numériques de l'événement (0 si non renseigné)
 //   - sat / sig / cap satellites, signal %, cap — optionnels, vides possible
 //
-//   Le firmware a historiquement ajouté sat, sig puis cap EN FIN de trame :
-//   les champs sat/sig/cap sont donc relus depuis la fin pour rester robuste
-//   aux deux variantes (avec/sans événement) qui ne contiennent pas le même
-//   nombre de champs.
+//   Le firmware actuel (publierBrut, faucon_v12.ino) envoie TOUJOURS les 12
+//   champs à position fixe — evt/value/threshold sont vides (";;;") plutôt
+//   qu'omis quand il n'y a pas d'événement, idem pour sat/sig/cap absents.
+//   12 champs = lecture par position fixe, sans ambiguïté possible. Pour
+//   toute autre longueur (message tronqué/corrompu, ou ancien firmware qui
+//   omettait vraiment des champs), on ne lit QUE le socle commun (id..ts) :
+//   deviner evt/value/threshold vs sat/sig/cap depuis la fin est ambigu à 9
+//   champs pile (les deux variantes ont le même nombre de champs) et
+//   corrompt silencieusement sat/sig/cap avec des valeurs d'un autre champ.
 const parseRawPayload = (payload) => {
     const parts = payload.split(';');
     if (parts.length < 6)
@@ -38,20 +52,24 @@ const parseRawPayload = (payload) => {
         const v = parts[i];
         return v !== undefined && v.trim() !== '' ? v.trim() : undefined;
     };
-    const cap = read(parts.length - 1);
-    const sig = read(parts.length - 2);
-    const sat = read(parts.length - 3);
+    const core = {
+        id: read(0), lat: read(1), lon: read(2),
+        bat: read(3), spd: read(4), ts: read(5),
+    };
+    if (parts.length === 12) {
+        return {
+            ...core,
+            evt: read(6), value: read(7), threshold: read(8),
+            sat: read(9), sig: read(10), cap: read(11),
+        };
+    }
+    if (parts.length !== 6) {
+        console.warn(`[MQTT] Trame raw de longueur inattendue (${parts.length} champs) — seuls id/lat/lon/bat/spd/ts sont retenus : ${payload.slice(0, 120)}`);
+    }
     return {
-        id: read(0),
-        lat: read(1),
-        lon: read(2),
-        bat: read(3),
-        spd: read(4),
-        ts: read(5),
-        evt: read(6),
-        value: read(7),
-        threshold: read(8),
-        sat, sig, cap,
+        ...core,
+        evt: undefined, value: undefined, threshold: undefined,
+        sat: undefined, sig: undefined, cap: undefined,
     };
 };
 const handleRawMessage = async (trackerId, payloadBuffer) => {
@@ -151,7 +169,7 @@ const handleDataMessage = async (trackerId, payloadBuffer) => {
 // Topic : faucon/<trackerId>/ack — réponse du traceur à une commande
 // descendante. Payload attendu :
 //   { "id": "<uuid CommandeDescendante>", "cmd": "...", "ok": true/false,
-//     "detail": "..." }
+//     "detail": "...", "trackerId": "...", "sig": "<hmac-sha256>" }
 const handleAckMessage = async (trackerId, payloadBuffer) => {
     if (!trackerId)
         return;
@@ -165,6 +183,17 @@ const handleAckMessage = async (trackerId, payloadBuffer) => {
     }
     if (!payload.id || typeof payload.id !== 'string')
         return;
+    // Vérification HMAC du ACK (signé par le firmware avec CMD_SIGN_KEY).
+    // Le serveur vérifie que leACK vient bien du traceur légitime et n'a pas
+    // été injecté par un subscriber MQTT malveillant.
+    if (payload.sig && CMD_SIGN_KEY) {
+        const aVerifier = `${payload.ok ? 1 : 0}|${payload.detail ?? ''}`;
+        const sigCalculee = computeHmac(aVerifier);
+        if (sigCalculee && payload.sig !== sigCalculee) {
+            console.warn(`[MQTT] ACK falsifié pour ${trackerId} (cmd ${payload.id}) — signature invalide`);
+            return;
+        }
+    }
     await (0, command_ack_handler_1.handleCommandAck)(payload.id, !!payload.ok, payload.detail ? String(payload.detail) : undefined);
 };
 // Publie une commande descendante vers un traceur. Retourne false si le
@@ -173,14 +202,30 @@ const handleAckMessage = async (trackerId, payloadBuffer) => {
 const publishCommand = (trackerId, payload) => {
     if (!client || !client.connected)
         return false;
-    client.publish(`faucon/${trackerId}/cmd`, JSON.stringify(payload), { qos: 1 });
+    // Signature HMAC : le firmware vérifie cette signature avant d'exécuter
+    // la commande, pour empêcher l'injection par un subscriber MQTT
+    // malveillant. Le payload signé est "cmd|valeur" (ou juste "cmd" si pas
+    // de valeur).
+    const aSigner = payload.valeur ? `${payload.cmd}|${payload.valeur}` : payload.cmd;
+    const sig = computeHmac(aSigner);
+    const signedPayload = { ...payload, sig };
+    client.publish(`faucon/${trackerId}/cmd`, JSON.stringify(signedPayload), { qos: 1 });
     return true;
 };
 exports.publishCommand = publishCommand;
 const startMqttClient = () => {
     const url = process.env.MQTT_BROKER_URL;
     if (!url) {
-        console.warn('[MQTT] MQTT_BROKER_URL absente — canal MQTT désactivé');
+        // MQTT est le canal PRINCIPAL du firmware (HTTP/SMS ne sont que des
+        // canaux de secours) — un oubli de configuration ici coupe l'essentiel
+        // du flux temps réel silencieusement. Reste non-fatal (un déploiement
+        // TCP/HTTP-only est possible) mais le signal doit être impossible à
+        // manquer dans les logs de démarrage.
+        console.error('╔═══════════════════════════════════════════════════════════════╗');
+        console.error('║  [MQTT] MQTT_BROKER_URL absente — canal MQTT DÉSACTIVÉ.         ║');
+        console.error('║  Le firmware publie principalement via MQTT : sans ce canal,    ║');
+        console.error('║  seuls les canaux de secours HTTP/SMS resteront actifs.         ║');
+        console.error('╚═══════════════════════════════════════════════════════════════╝');
         return;
     }
     client = mqtt_1.default.connect(url, {

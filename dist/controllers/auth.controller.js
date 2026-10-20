@@ -10,6 +10,12 @@ exports.authController = {
             if (!userName || !email || !password) {
                 return (0, response_1.sendError)(res, 'Tous les champs sont requis', 400);
             }
+            // Même règle que admin.controller.ts (creerUtilisateur) — sans ce
+            // contrôle, un compte pouvait être créé avec un mot de passe d'un seul
+            // caractère alors que la création par un admin l'interdit.
+            if (typeof password !== 'string' || password.length < 8) {
+                return (0, response_1.sendError)(res, 'Le mot de passe doit contenir au moins 8 caractères', 400);
+            }
             const result = await auth_service_1.authService.register(userName, email, password);
             return (0, response_1.sendSuccess)(res, 'Inscription réussie', result, 201);
         }

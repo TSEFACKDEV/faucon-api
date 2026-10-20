@@ -186,6 +186,10 @@ export const adminService = {
   setMode: async (vehiculeId: string, mode: 'WORK' | 'MOVE' | 'STANDBY') =>
     vehicleService.setMode(vehiculeId, undefined, mode),
 
+  // Lecture du mode réellement appliqué par le traceur (commande MODE?).
+  readMode: async (vehiculeId: string) =>
+    vehicleService.readMode(vehiculeId, undefined),
+
   setSpeedLimit: async (vehiculeId: string, seuilKmh: number) =>
     vehicleService.setSpeedLimit(vehiculeId, undefined, seuilKmh),
 

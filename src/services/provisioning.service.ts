@@ -1,4 +1,4 @@
-import { randomInt } from 'crypto';
+import { randomInt, randomBytes } from 'crypto';
 import { prisma } from '../config/database';
 import { AppError } from '../utils/errors';
 
@@ -16,9 +16,15 @@ const genererPin = (): string =>
 
 const genererSuffixe = (): string => String(randomInt(0, 10000)).padStart(4, '0');
 
+// Génère un token MQTT aléatoire pour un traceur.
+// Le préfixe "fc-" facilite l'identification côté broker.
+const genererMqttToken = (): string => `fc-${randomBytes(16).toString('hex')}`;
+
 export interface VehiculeProvisionne {
   trackerId: string;
   pinActivation: string;
+  mqttUser: string;
+  mqttPassword: string;
 }
 
 /**
@@ -32,17 +38,21 @@ const provisionerUn = async (prefix: string): Promise<VehiculeProvisionne> => {
   for (let tentative = 0; tentative < MAX_TENTATIVES_UNICITE; tentative++) {
     const trackerId = `${prefix.toUpperCase()}-${genererSuffixe()}`;
     const pinActivation = genererPin();
+    const mqttUser = genererMqttToken();
+    const mqttPassword = genererMqttToken();
 
     try {
       await prisma.vehicule.create({
         data: {
           trackerId,
           pinActivation,
+          mqttUser,
+          mqttPassword,
           nom: `Traceur ${trackerId}`,
           estActif: false,
         },
       });
-      return { trackerId, pinActivation };
+      return { trackerId, pinActivation, mqttUser, mqttPassword };
     } catch (err: any) {
       if (err?.code !== 'P2002') throw err;
       // Collision sur trackerId : on retente avec un nouveau candidat.

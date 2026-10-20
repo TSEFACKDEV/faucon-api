@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.broadcastCommandUpdate = exports.broadcastAlarm = exports.broadcastPosition = exports.initWebSocket = void 0;
+exports.broadcastVehicleMode = exports.broadcastCommandUpdate = exports.broadcastAlarm = exports.broadcastPosition = exports.initWebSocket = void 0;
 const socket_io_1 = require("socket.io");
 const jwt_1 = require("../utils/jwt");
 const database_1 = require("../config/database");
@@ -35,11 +35,16 @@ const initWebSocket = (httpServer) => {
         socket.on('subscribe', async (vehiculeIds) => {
             if (!Array.isArray(vehiculeIds) || vehiculeIds.length === 0)
                 return;
+            // Limite stricte : un client ne peut pas s'abonner à plus de 50
+            // véhicules en une seule requête. Au-delà, c'est probablement une
+            // erreur côté client ou une tentative de surcharge du serveur.
+            const MAX_SUBSCRIBE = 50;
+            const ids = vehiculeIds.slice(0, MAX_SUBSCRIBE);
             const isAdmin = socket.data.role === 'ADMIN';
             const owned = isAdmin
-                ? await database_1.prisma.vehicule.findMany({ where: { id: { in: vehiculeIds } }, select: { id: true } })
+                ? await database_1.prisma.vehicule.findMany({ where: { id: { in: ids } }, select: { id: true } })
                 : await database_1.prisma.vehicule.findMany({
-                    where: { id: { in: vehiculeIds }, utilisateurId },
+                    where: { id: { in: ids }, utilisateurId },
                     select: { id: true },
                 });
             owned.forEach(({ id }) => socket.join(`vehicle:${id}`));
@@ -72,3 +77,12 @@ const broadcastCommandUpdate = (vehiculeId, data) => {
     io.to(`vehicle:${vehiculeId}`).emit('commande_update', data);
 };
 exports.broadcastCommandUpdate = broadcastCommandUpdate;
+// Notifie l'app mobile du mode RÉELLEMENT appliqué par le traceur (confirmé
+// par l'ACK d'une commande MODE ou MODE?). Émis uniquement quand le mode
+// change — l'app n'a pas à le deviner ni à le redemander.
+const broadcastVehicleMode = (vehiculeId, modeActuel) => {
+    if (!io)
+        return;
+    io.to(`vehicle:${vehiculeId}`).emit('vehicle_mode', { vehiculeId, modeActuel });
+};
+exports.broadcastVehicleMode = broadcastVehicleMode;

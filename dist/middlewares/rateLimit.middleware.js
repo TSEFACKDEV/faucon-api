@@ -9,6 +9,18 @@ const response_1 = require("../utils/response");
  */
 const rateLimit = (maxRequests, windowMs) => {
     const buckets = new Map();
+    // Sans purge, `buckets` grossit indéfiniment avec le nombre d'IP uniques
+    // vues (process qui tourne en continu) — un nettoyage périodique retire les
+    // entrées dont la fenêtre est expirée. Le timer est `unref()`é pour ne pas
+    // empêcher l'arrêt propre du process.
+    const cleanup = setInterval(() => {
+        const now = Date.now();
+        for (const [key, bucket] of buckets) {
+            if (bucket.resetAt <= now)
+                buckets.delete(key);
+        }
+    }, Math.max(windowMs, 60000));
+    cleanup.unref();
     return (req, res, next) => {
         const key = req.ip ?? 'unknown';
         const now = Date.now();
@@ -19,6 +31,8 @@ const rateLimit = (maxRequests, windowMs) => {
             return;
         }
         if (bucket.count >= maxRequests) {
+            const retryAfterSec = Math.ceil((bucket.resetAt - now) / 1000);
+            res.setHeader('Retry-After', String(retryAfterSec));
             (0, response_1.sendError)(res, 'Trop de tentatives, réessayez plus tard', 429);
             return;
         }

@@ -9,24 +9,8 @@ const database_1 = require("../config/database");
 const errors_1 = require("../utils/errors");
 const vehicle_service_1 = require("./vehicle.service");
 const constants_1 = require("../utils/constants");
-// Fuseau opérationnel (Africa/Douala, UTC+1, sans heure d'été). Tous les
-// découpages "jour" (aujourd'hui, séries 7j/30j) utilisent ce fuseau pour
-// rester alignés sur les CRON (scheduler.ts).
-const TZ_OFFSET_MIN = 60;
-const dayStartUtc = (isoDate) => {
-    const [y, m, d] = isoDate.split('-').map(Number);
-    return new Date(Date.UTC(y, m - 1, d) - TZ_OFFSET_MIN * 60000);
-};
-const dayBounds = (isoDate) => {
-    const start = dayStartUtc(isoDate);
-    return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1) };
-};
-const jourAujourdhui = () => new Date(Date.now() + TZ_OFFSET_MIN * 60000).toISOString().slice(0, 10);
-const jourMoins = (offsetJours) => {
-    const shifted = new Date(Date.now() + TZ_OFFSET_MIN * 60000);
-    shifted.setDate(shifted.getDate() - offsetJours);
-    return shifted.toISOString().slice(0, 10);
-};
+const dayBounds_1 = require("../utils/dayBounds");
+const jourMoins = (offsetJours) => (0, dayBounds_1.jourDecale)(-offsetJours);
 exports.adminService = {
     // ── Utilisateurs ───────────────────────────────────────────────
     getUtilisateurs: async () => {
@@ -82,6 +66,13 @@ exports.adminService = {
         const utilisateur = await database_1.prisma.utilisateur.findUnique({ where: { id } });
         if (!utilisateur)
             throw new errors_1.NotFoundError('Utilisateur introuvable');
+        // Un compte ADMIN ne peut jamais être supprimé depuis cette interface —
+        // sans ce garde-fou, un admin pouvait se supprimer lui-même (ou un autre
+        // admin) et perdre tout accès au dashboard, sans recours autre qu'un
+        // accès direct à la base de données.
+        if (utilisateur.role === 'ADMIN') {
+            throw new errors_1.AppError('Un compte administrateur ne peut pas être supprimé', 403);
+        }
         await database_1.prisma.utilisateur.delete({ where: { id } });
     },
     // ── Traceurs (vue globale) ─────────────────────────────────────
@@ -101,6 +92,18 @@ exports.adminService = {
             select: { vehiculeId: true, latitude: true, longitude: true },
         });
         const positionParVehicule = new Map(dernieres.map((p) => [p.vehiculeId, p]));
+        // Nombre de jours actifs par traceur — calcul côté serveur à partir des
+        // positions (données immuables, non altérable par le client).
+        const vehiculeIds = vehicules.map(v => v.id);
+        const joursRows = vehiculeIds.length > 0
+            ? await database_1.prisma.$queryRaw `
+          SELECT "vehiculeId", COUNT(DISTINCT DATE(horodatage)) as count
+          FROM positions
+          WHERE "vehiculeId" = ANY(${vehiculeIds})
+          GROUP BY "vehiculeId"
+        `
+            : [];
+        const joursMap = new Map(joursRows.map(r => [r.vehiculeId, Number(r.count)]));
         const maintenant = Date.now();
         return vehicules.map((v) => {
             const pos = positionParVehicule.get(v.id);
@@ -113,6 +116,7 @@ exports.adminService = {
                 niveauBatterie: v.niveauBatterie,
                 estActif: v.estActif,
                 dateAjout: v.dateAjout,
+                joursActifs: joursMap.get(v.id) ?? 0,
                 derniereCommunication: v.derniereCommunication,
                 latitude: pos?.latitude ?? null,
                 longitude: pos?.longitude ?? null,
@@ -171,6 +175,8 @@ exports.adminService = {
     // propriétaire (undefined) : la restriction d'appartenance ne s'applique
     // qu'à l'app mobile, le rôle ADMIN étant déjà validé par le middleware.
     setMode: async (vehiculeId, mode) => vehicle_service_1.vehicleService.setMode(vehiculeId, undefined, mode),
+    // Lecture du mode réellement appliqué par le traceur (commande MODE?).
+    readMode: async (vehiculeId) => vehicle_service_1.vehicleService.readMode(vehiculeId, undefined),
     setSpeedLimit: async (vehiculeId, seuilKmh) => vehicle_service_1.vehicleService.setSpeedLimit(vehiculeId, undefined, seuilKmh),
     setGeofence: async (vehiculeId, nom, centreLat, centreLon, rayonMetres) => vehicle_service_1.vehicleService.setGeofence(vehiculeId, undefined, nom, centreLat, centreLon, rayonMetres),
     setPhoneAlerte: async (vehiculeId, telephone) => vehicle_service_1.vehicleService.setPhoneAlerte(vehiculeId, undefined, telephone),
@@ -200,8 +206,8 @@ exports.adminService = {
     getStatsOverview: async () => {
         const maintenant = Date.now();
         const enLigneCutoff = new Date(maintenant - constants_1.EN_LIGNE_SEUIL_MS);
-        const aujourdhui = jourAujourdhui();
-        const { start: debutAujourdhui, end: finAujourdhui } = dayBounds(aujourdhui);
+        const aujourdhui = (0, dayBounds_1.jourAujourdhui)();
+        const { start: debutAujourdhui, end: finAujourdhui } = (0, dayBounds_1.dayBounds)(aujourdhui);
         const [totalUtilisateurs, totalVehicules, vehiculesEnLigne, vehiculesActifs, alarmesNonAcquittees, alarmesAujourdhui, alarmesParType, repartitionModes,] = await Promise.all([
             database_1.prisma.utilisateur.count(),
             database_1.prisma.vehicule.count(),
@@ -212,20 +218,22 @@ exports.adminService = {
             database_1.prisma.alarme.groupBy({ by: ['typeAlarme'], _count: { _all: true } }),
             database_1.prisma.vehicule.groupBy({ by: ['modeActuel'], _count: { _all: true } }),
         ]);
-        const croissanceUtilisateurs30j = [];
-        for (let i = 29; i >= 0; i--) {
-            const date = jourMoins(i);
-            const { end } = dayBounds(date);
+        // Les 30 + 7 requêtes de chaque série sont indépendantes (une date
+        // distincte chacune) — les lancer en parallèle plutôt que d'attendre
+        // (`await` dans une boucle `for`) chacune séquentiellement, sur un
+        // endpoint appelé à chaque chargement du dashboard admin.
+        const jours30 = Array.from({ length: 30 }, (_, k) => jourMoins(29 - k));
+        const croissanceUtilisateurs30j = await Promise.all(jours30.map(async (date) => {
+            const { end } = (0, dayBounds_1.dayBounds)(date);
             const total = await database_1.prisma.utilisateur.count({ where: { dateCreation: { lte: end } } });
-            croissanceUtilisateurs30j.push({ date, total });
-        }
-        const alarmesParJour7j = [];
-        for (let i = 6; i >= 0; i--) {
-            const date = jourMoins(i);
-            const { start, end } = dayBounds(date);
+            return { date, total };
+        }));
+        const jours7 = Array.from({ length: 7 }, (_, k) => jourMoins(6 - k));
+        const alarmesParJour7j = await Promise.all(jours7.map(async (date) => {
+            const { start, end } = (0, dayBounds_1.dayBounds)(date);
             const total = await database_1.prisma.alarme.count({ where: { horodatage: { gte: start, lte: end } } });
-            alarmesParJour7j.push({ date, total });
-        }
+            return { date, total };
+        }));
         const [batterieBasse, batterieMoyenne, batterieCorrecte, batterieBonne] = await Promise.all([
             database_1.prisma.vehicule.count({ where: { niveauBatterie: { lte: 20 } } }),
             database_1.prisma.vehicule.count({ where: { niveauBatterie: { gt: 20, lte: 50 } } }),
