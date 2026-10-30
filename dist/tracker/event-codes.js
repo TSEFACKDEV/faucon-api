@@ -11,10 +11,23 @@ exports.EVENT_CODE_MAP = {
     '3': 'VITESSE_EXCESSIVE',
     '4': 'SORTIE_ZONE',
     '5': 'NON_MOUVEMENT',
+    // Libellés envoyés par le firmware récent (champ evt textuel).
+    'CONDUITE': 'CONDUITE_BRUTALE',
+    'CONDUITE BRUTALE': 'CONDUITE_BRUTALE',
+    'CONDUITE_BRUTALE': 'CONDUITE_BRUTALE',
+    'CHOC': 'CHOC',
+    'BRUTAL': 'MOUVEMENT_BRUTAL',
+    'MOUVEMENT BRUTAL': 'MOUVEMENT_BRUTAL',
+    'MOUVEMENT_BRUTAL': 'MOUVEMENT_BRUTAL',
 };
 const mapTrackerEvent = (evt) => {
     if (evt === undefined || evt === null || evt === '')
         return undefined;
-    return exports.EVENT_CODE_MAP[String(evt)];
+    const key = String(evt).trim().toUpperCase();
+    const mapped = exports.EVENT_CODE_MAP[key];
+    if (!mapped) {
+        console.warn(`[EVENT] Libellé d'événement inconnu ignoré : ${evt}`);
+    }
+    return mapped;
 };
 exports.mapTrackerEvent = mapTrackerEvent;

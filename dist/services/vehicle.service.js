@@ -154,12 +154,25 @@ exports.vehicleService = {
                     orderBy: { horodatage: 'desc' },
                     take: 5,
                 },
+                // Dernier diagnostic périodique reçu du traceur (canal /diag) :
+                // modèle, version du firmware, mode réellement appliqué, santé.
+                diagnostics: {
+                    orderBy: { horodatage: 'desc' },
+                    take: 1,
+                },
             },
         });
         if (!vehicle)
             throw new errors_1.NotFoundError('Véhicule introuvable');
         const joursActifs = await countJoursActifs(id);
-        return { ...vehicle, joursActifs };
+        return {
+            ...vehicle,
+            joursActifs,
+            // Le tableau "diagnostics" est aplati en un objet unique : plus
+            // lisible par les clients, et il n'y en a qu'un par définition.
+            dernierDiagnostic: vehicle.diagnostics[0] ?? null,
+            diagnostics: undefined,
+        };
     },
     updateVehicle: async (id, utilisateurId, data) => {
         const vehicle = await database_1.prisma.vehicule.findFirst({ where: { id, utilisateurId } });
@@ -229,6 +242,35 @@ exports.vehicleService = {
             throw new errors_1.AppError("Ce traceur n'a pas encore d'identifiant MQTT connu — lecture impossible.", 400);
         }
         return (0, exports.envoyerCommande)(vehiculeId, vehicle.trackerId, 'MODE?');
+    },
+    // Demande au traceur ses informations matérielles et logicielles
+    // (commande INFO). Le firmware répond dans l'ACK avec un détail du type
+    // "FAUCON-C3-72x40 v12.1 WORK" : modèle, version du firmware et mode
+    // appliqué. Utile pour confirmer qu'un traceur tourne bien la version
+    // attendue avant d'investiguer un comportement.
+    readInfos: async (vehiculeId, utilisateurId) => {
+        const vehicle = await findOwnedVehicle(vehiculeId, utilisateurId);
+        if (!vehicle)
+            throw new errors_1.NotFoundError('Véhicule introuvable');
+        if (!vehicle.trackerId) {
+            throw new errors_1.AppError("Ce traceur n'a pas encore d'identifiant MQTT connu — lecture impossible.", 400);
+        }
+        return (0, exports.envoyerCommande)(vehiculeId, vehicle.trackerId, 'INFO');
+    },
+    // Historique des diagnostics périodiques reçus du traceur (canal /diag).
+    // Permet de voir l'évolution de l'état de santé du boîtier dans le temps
+    // (compteurs de reset, santé I2C, file d'attente du journal flash).
+    getDiagnostics: async (vehiculeId, utilisateurId, limite = 50) => {
+        const vehicle = utilisateurId
+            ? await database_1.prisma.vehicule.findFirst({ where: { id: vehiculeId, utilisateurId } })
+            : await database_1.prisma.vehicule.findUnique({ where: { id: vehiculeId } });
+        if (!vehicle)
+            throw new errors_1.NotFoundError('Véhicule introuvable');
+        return database_1.prisma.diagnosticTraceur.findMany({
+            where: { vehiculeId },
+            orderBy: { horodatage: 'desc' },
+            take: Math.min(Math.max(limite, 1), 200),
+        });
     },
     // Numéro qui reçoit les SMS d'alerte envoyés directement par le traceur
     // (choc, conduite brutale, premier fix...). Même principe que setMode :

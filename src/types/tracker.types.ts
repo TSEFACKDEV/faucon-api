@@ -5,7 +5,10 @@ export type EventType =
   | 'VITESSE_EXCESSIVE'
   | 'DECOLLEMENT_TRACEUR'
   | 'NON_MOUVEMENT'
-  | 'BATTERIE_FAIBLE';
+  | 'BATTERIE_FAIBLE'
+  | 'CONDUITE_BRUTALE'
+  | 'CHOC'
+  | 'MOUVEMENT_BRUTAL';
 
 export type NetworkType = '2G' | '3G' | '4G';
 export type ModeType    = 'WORK' | 'MOVE' | 'STANDBY';

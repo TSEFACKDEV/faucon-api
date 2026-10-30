@@ -32,7 +32,8 @@ const validateTrame = (trame) => {
         const t = trame;
         const validEvents = [
             'SORTIE_ZONE', 'VITESSE_EXCESSIVE',
-            'DECOLLEMENT_TRACEUR', 'NON_MOUVEMENT', 'BATTERIE_FAIBLE'
+            'DECOLLEMENT_TRACEUR', 'NON_MOUVEMENT', 'BATTERIE_FAIBLE',
+            'CONDUITE_BRUTALE', 'CHOC', 'MOUVEMENT_BRUTAL'
         ];
         if (!validEvents.includes(t.event)) {
             return { valid: false, reason: `Événement inconnu : ${t.event}` };

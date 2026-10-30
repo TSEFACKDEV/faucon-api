@@ -146,6 +146,34 @@ exports.vehicleController = {
             return (0, response_1.sendError)(res, err.message, err.statusCode ?? 400);
         }
     },
+    // Demande au traceur ses informations matérielles et logicielles
+    // (modèle, version du firmware, mode appliqué) — commande INFO.
+    readInfos: async (req, res) => {
+        try {
+            const id = (0, params_1.getParamId)(req.params.id);
+            if (!id)
+                return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
+            const commande = await vehicle_service_1.vehicleService.readInfos(id, req.user.id);
+            return (0, response_1.sendSuccess)(res, 'Lecture des informations demandée au traceur', commande, 201);
+        }
+        catch (err) {
+            return (0, response_1.sendError)(res, err.message, err.statusCode ?? 400);
+        }
+    },
+    // Historique des diagnostics périodiques reçus du traceur (canal /diag).
+    getDiagnostics: async (req, res) => {
+        try {
+            const id = (0, params_1.getParamId)(req.params.id);
+            if (!id)
+                return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
+            const limite = Number(req.query.limite ?? 50);
+            const diagnostics = await vehicle_service_1.vehicleService.getDiagnostics(id, req.user.id, Number.isFinite(limite) ? limite : 50);
+            return (0, response_1.sendSuccess)(res, 'Diagnostics récupérés', diagnostics);
+        }
+        catch (err) {
+            return (0, response_1.sendError)(res, err.message, err.statusCode ?? 400);
+        }
+    },
     setPhoneAlerte: async (req, res) => {
         try {
             const id = (0, params_1.getParamId)(req.params.id);
@@ -168,7 +196,7 @@ exports.vehicleController = {
             if (!id)
                 return (0, response_1.sendError)(res, 'ID du véhicule requis', 400);
             const { codeCommande, valeur } = req.body;
-            const codesValides = ['LOCALISER', 'MODE', 'MODE?', 'REDEMARRER', 'RESET_USINE', 'NUMERO_SMS'];
+            const codesValides = ['LOCALISER', 'MODE', 'MODE?', 'INFO', 'REDEMARRER', 'RESET_USINE', 'NUMERO_SMS'];
             if (!codesValides.includes(codeCommande)) {
                 return (0, response_1.sendError)(res, `Commande invalide (${codesValides.join(' | ')})`, 400);
             }

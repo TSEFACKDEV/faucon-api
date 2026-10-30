@@ -11,6 +11,8 @@ const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const vehicle_routes_1 = __importDefault(require("./routes/vehicle.routes"));
+const owner_routes_1 = __importDefault(require("./routes/owner.routes"));
+const apiKey_routes_1 = __importDefault(require("./routes/apiKey.routes"));
 const tracker_routes_1 = __importDefault(require("./routes/tracker.routes"));
 const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
 const error_middleware_1 = require("./middlewares/error.middleware");
@@ -43,6 +45,8 @@ app.get('/version', (_, res) => {
 // `Vehicule`). Historiquement monté aussi sous `/devices` en doublon — retiré
 // pour éviter deux surfaces d'API identiques à maintenir.
 app.use('/auth', auth_routes_1.default);
+app.use('/api-keys', apiKey_routes_1.default);
+app.use('/owner', owner_routes_1.default);
 app.use('/vehicles', vehicle_routes_1.default);
 app.use('/tracker', tracker_routes_1.default);
 app.use('/admin', admin_routes_1.default);

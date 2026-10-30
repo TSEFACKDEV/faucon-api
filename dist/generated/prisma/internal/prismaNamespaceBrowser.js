@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.JsonNullValueFilter = exports.NullsOrder = exports.QueryMode = exports.NullableJsonNullValueInput = exports.SortOrder = exports.CommandeDescendanteScalarFieldEnum = exports.SessionTrajetScalarFieldEnum = exports.RapportJournalierScalarFieldEnum = exports.NotificationScalarFieldEnum = exports.AlarmeScalarFieldEnum = exports.PerimetreGeofenceScalarFieldEnum = exports.LimiteVitesseScalarFieldEnum = exports.PositionScalarFieldEnum = exports.VehiculeScalarFieldEnum = exports.RefreshTokenScalarFieldEnum = exports.UtilisateurScalarFieldEnum = exports.TransactionIsolationLevel = exports.ModelName = exports.AnyNull = exports.JsonNull = exports.DbNull = exports.NullTypes = exports.Decimal = void 0;
+exports.JsonNullValueFilter = exports.NullsOrder = exports.QueryMode = exports.NullableJsonNullValueInput = exports.SortOrder = exports.CleApiScalarFieldEnum = exports.CommandeDescendanteScalarFieldEnum = exports.RapportJournalierScalarFieldEnum = exports.AlarmeScalarFieldEnum = exports.PerimetreGeofenceScalarFieldEnum = exports.LimiteVitesseScalarFieldEnum = exports.PositionScalarFieldEnum = exports.DiagnosticTraceurScalarFieldEnum = exports.VehiculeScalarFieldEnum = exports.RefreshTokenScalarFieldEnum = exports.UtilisateurScalarFieldEnum = exports.TransactionIsolationLevel = exports.ModelName = exports.AnyNull = exports.JsonNull = exports.DbNull = exports.NullTypes = exports.Decimal = void 0;
 const runtime = __importStar(require("@prisma/client/runtime/index-browser"));
 exports.Decimal = runtime.Decimal;
 exports.NullTypes = {
@@ -78,14 +78,14 @@ exports.ModelName = {
     Utilisateur: 'Utilisateur',
     RefreshToken: 'RefreshToken',
     Vehicule: 'Vehicule',
+    DiagnosticTraceur: 'DiagnosticTraceur',
     Position: 'Position',
     LimiteVitesse: 'LimiteVitesse',
     PerimetreGeofence: 'PerimetreGeofence',
     Alarme: 'Alarme',
-    Notification: 'Notification',
     RapportJournalier: 'RapportJournalier',
-    SessionTrajet: 'SessionTrajet',
-    CommandeDescendante: 'CommandeDescendante'
+    CommandeDescendante: 'CommandeDescendante',
+    CleApi: 'CleApi'
 };
 /*
  * Enums
@@ -121,12 +121,44 @@ exports.VehiculeScalarFieldEnum = {
     nom: 'nom',
     image: 'image',
     telephoneAlerte: 'telephoneAlerte',
+    mqttUser: 'mqttUser',
+    mqttPassword: 'mqttPassword',
     modeActuel: 'modeActuel',
     niveauBatterie: 'niveauBatterie',
     estActif: 'estActif',
     dateAjout: 'dateAjout',
     derniereCommunication: 'derniereCommunication',
     utilisateurId: 'utilisateurId'
+};
+exports.DiagnosticTraceurScalarFieldEnum = {
+    id: 'id',
+    vehiculeId: 'vehiculeId',
+    horodatage: 'horodatage',
+    modele: 'modele',
+    version: 'version',
+    mode: 'mode',
+    causeReset: 'causeReset',
+    resetCode: 'resetCode',
+    dernierArret: 'dernierArret',
+    nbWatchdog: 'nbWatchdog',
+    nbBrownout: 'nbBrownout',
+    nbPanique: 'nbPanique',
+    fixValide: 'fixValide',
+    fixPerime: 'fixPerime',
+    ageFixSecondes: 'ageFixSecondes',
+    satellites: 'satellites',
+    hdop: 'hdop',
+    batteriePct: 'batteriePct',
+    signalPct: 'signalPct',
+    signalValide: 'signalValide',
+    i2cRecuperations: 'i2cRecuperations',
+    i2cSuspendu: 'i2cSuspendu',
+    journalOk: 'journalOk',
+    positionsPerdues: 'positionsPerdues',
+    fileNombre: 'fileNombre',
+    sourceHeure: 'sourceHeure',
+    heapLibre: 'heapLibre',
+    brut: 'brut'
 };
 exports.PositionScalarFieldEnum = {
     id: 'id',
@@ -176,15 +208,6 @@ exports.AlarmeScalarFieldEnum = {
     horodatage: 'horodatage',
     dateCreation: 'dateCreation'
 };
-exports.NotificationScalarFieldEnum = {
-    id: 'id',
-    alarmeId: 'alarmeId',
-    canal: 'canal',
-    contenu: 'contenu',
-    estEnvoyee: 'estEnvoyee',
-    dateEnvoi: 'dateEnvoi',
-    dateCreation: 'dateCreation'
-};
 exports.RapportJournalierScalarFieldEnum = {
     id: 'id',
     vehiculeId: 'vehiculeId',
@@ -196,14 +219,6 @@ exports.RapportJournalierScalarFieldEnum = {
     tempsArretMinutes: 'tempsArretMinutes',
     dateGeneration: 'dateGeneration'
 };
-exports.SessionTrajetScalarFieldEnum = {
-    id: 'id',
-    vehiculeId: 'vehiculeId',
-    dateDebut: 'dateDebut',
-    dateFin: 'dateFin',
-    distanceKm: 'distanceKm',
-    dureeMinutes: 'dureeMinutes'
-};
 exports.CommandeDescendanteScalarFieldEnum = {
     id: 'id',
     vehiculeId: 'vehiculeId',
@@ -212,6 +227,18 @@ exports.CommandeDescendanteScalarFieldEnum = {
     statutExecution: 'statutExecution',
     dateEnvoi: 'dateEnvoi',
     dateReponse: 'dateReponse'
+};
+exports.CleApiScalarFieldEnum = {
+    id: 'id',
+    utilisateurId: 'utilisateurId',
+    nom: 'nom',
+    prefix: 'prefix',
+    hash: 'hash',
+    scopes: 'scopes',
+    estActive: 'estActive',
+    dateCreation: 'dateCreation',
+    derniereUtilisation: 'derniereUtilisation',
+    dateExpiration: 'dateExpiration'
 };
 exports.SortOrder = {
     asc: 'asc',

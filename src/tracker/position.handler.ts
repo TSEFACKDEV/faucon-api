@@ -51,9 +51,48 @@ export const handlePositionPayload = async (
             lte: new Date(payload.timestamp.getTime() + 2000),
           },
         },
-        select: { id: true },
+        select: { id: true, horodatage: true },
       });
-      if (duplicate) return false;
+      if (duplicate) {
+        // Plusieurs trames du firmware peuvent partager le même horodatage
+        // (granularité d'une seconde) avec des valeurs différentes : la
+        // première ne doit pas figer signal/satellites/cap. On met à jour la
+        // ligne existante avec la trame la plus récente, sans écraser les
+        // champs optionnels absents par null/0.
+        if (payload.timestamp.getTime() >= duplicate.horodatage.getTime()) {
+          await tx.position.update({
+            where: { id: duplicate.id },
+            data: {
+              latitude: payload.latitude,
+              longitude: payload.longitude,
+              vitesse: payload.vitesse,
+              niveauBatterie: payload.battery,
+              ...(payload.cap !== undefined ? { cap: payload.cap } : {}),
+              ...(payload.satellites !== undefined
+                  ? { nbSatellites: payload.satellites }
+                  : {}),
+              ...(payload.signal !== undefined
+                  ? { niveauSignal: payload.signal }
+                  : {}),
+              ...(payload.acc !== undefined ? { statutACC: payload.acc } : {}),
+              ...(payload.cycleNumber !== undefined
+                  ? { cyc: payload.cycleNumber }
+                  : {}),
+              ...(payload.alertCount !== undefined
+                  ? { alr: payload.alertCount }
+                  : {}),
+            },
+          });
+          await tx.vehicule.update({
+            where: { id: vehiculeId },
+            data: {
+              derniereCommunication: payload.timestamp,
+              niveauBatterie: payload.battery,
+            },
+          });
+        }
+        return false;
+      }
 
       // 1. Sauvegarder la position
       await tx.position.create({
@@ -97,6 +136,7 @@ export const handlePositionPayload = async (
         battery:   payload.battery,
         satellites: payload.satellites,
         signal:    payload.signal,
+        statutACC: payload.acc,
         horodatage: payload.timestamp.toISOString(),
         source:    payload.source,
         eventType: payload.eventType,
@@ -115,14 +155,28 @@ export const handlePositionPayload = async (
       battery:   payload.battery,
       satellites: payload.satellites,
       signal:    payload.signal,
+      statutACC: payload.acc,
       horodatage: payload.timestamp.toISOString(),
       source:    payload.source,
       eventType: payload.eventType,
     });
 
     // 4. Vérifications asynchrones (ne bloquent pas la réponse au traceur)
-    checkGeofence(vehiculeId, payload.latitude, payload.longitude).catch(console.error);
-    checkSpeedLimit(vehiculeId, payload.vitesse, payload.latitude, payload.longitude).catch(console.error);
+    checkGeofence(
+      vehiculeId,
+      payload.latitude,
+      payload.longitude,
+      payload.satellites,
+      payload.timestamp,
+    ).catch(console.error);
+    checkSpeedLimit(
+      vehiculeId,
+      payload.vitesse,
+      payload.latitude,
+      payload.longitude,
+      payload.satellites,
+      payload.timestamp,
+    ).catch(console.error);
     checkBatteryLevel(vehiculeId, payload.battery, payload.latitude, payload.longitude).catch(console.error);
 
     // 5. Événement transmis par les canaux HTTP/SMS (le canal TCP passe par
@@ -165,18 +219,41 @@ const checkBatteryLevel = async (
   latitude: number,
   longitude: number
 ): Promise<void> => {
+  // Batterie remontée : on clôture une éventuelle alerte encore active afin
+  // qu'une nouvelle baisse puisse être signalée plus tard.
+  if (battery > 25) {
+    await prisma.alarme.updateMany({
+      where: {
+        vehiculeId,
+        typeAlarme: 'BATTERIE_FAIBLE',
+        estAcquittee: false,
+      },
+      data: {
+        estAcquittee: true,
+        dateAcquittement: new Date(),
+      },
+    });
+    return;
+  }
+
+  // Zone neutre (21–25 %) : ni alerte, ni réinitialisation.
   if (battery > 20) return;
 
   const vehicule = await prisma.vehicule.findUnique({
     where: { id: vehiculeId },
-    select: { alarmes: { where: {
-      typeAlarme: 'BATTERIE_FAIBLE',
-      estAcquittee: false,
-      horodatage: { gte: new Date(Date.now() - 60 * 60 * 1000) }, // dernière heure
-    }, take: 1 } },
+    select: {
+      alarmes: {
+        where: {
+          typeAlarme: 'BATTERIE_FAIBLE',
+          estAcquittee: false,
+        },
+        take: 1,
+      },
+    },
   });
 
-  // Éviter les doublons d'alarmes batterie
+  // Si une alarme batterie faible est déjà active et non acquittée, on ne
+  // crée pas de doublon, même si elle date de plusieurs heures.
   if (vehicule?.alarmes.length) return;
 
   await prisma.alarme.create({

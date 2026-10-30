@@ -177,6 +177,10 @@ exports.adminService = {
     setMode: async (vehiculeId, mode) => vehicle_service_1.vehicleService.setMode(vehiculeId, undefined, mode),
     // Lecture du mode réellement appliqué par le traceur (commande MODE?).
     readMode: async (vehiculeId) => vehicle_service_1.vehicleService.readMode(vehiculeId, undefined),
+    // Lecture des infos matérielles / logicielles du traceur (commande INFO).
+    readInfos: async (vehiculeId) => vehicle_service_1.vehicleService.readInfos(vehiculeId, undefined),
+    // Historique des diagnostics périodiques reçus du traceur (canal /diag).
+    getDiagnostics: async (vehiculeId, limite) => vehicle_service_1.vehicleService.getDiagnostics(vehiculeId, undefined, limite),
     setSpeedLimit: async (vehiculeId, seuilKmh) => vehicle_service_1.vehicleService.setSpeedLimit(vehiculeId, undefined, seuilKmh),
     setGeofence: async (vehiculeId, nom, centreLat, centreLon, rayonMetres) => vehicle_service_1.vehicleService.setGeofence(vehiculeId, undefined, nom, centreLat, centreLon, rayonMetres),
     setPhoneAlerte: async (vehiculeId, telephone) => vehicle_service_1.vehicleService.setPhoneAlerte(vehiculeId, undefined, telephone),

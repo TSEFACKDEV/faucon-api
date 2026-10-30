@@ -10,6 +10,7 @@ const position_handler_1 = require("./position.handler");
 const vehicle_lookup_service_1 = require("../services/vehicle-lookup.service");
 const trame_validator_1 = require("./trame.validator");
 const command_ack_handler_1 = require("./command-ack.handler");
+const diag_handler_1 = require("./diag.handler");
 const event_codes_1 = require("./event-codes");
 let client = null;
 // Clé HMAC-SHA256 partagée avec le firmware (CMD_SIGN_KEY dans le .ino).
@@ -19,6 +20,17 @@ const computeHmac = (data) => {
     if (!CMD_SIGN_KEY)
         return '';
     return crypto_1.default.createHmac('sha256', CMD_SIGN_KEY).update(data).digest('hex');
+};
+// Convertit un champ optionnel en nombre sans transformer null/vide en 0.
+// Important pour signal/satellites/cap : une valeur absente doit rester
+// absente (et ne pas écraser la dernière valeur connue côté app).
+const toOptionalNumber = (value) => {
+    if (value === undefined || value === null)
+        return undefined;
+    if (typeof value === 'string' && value.trim() === '')
+        return undefined;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
 };
 // ────────────────────────────────────────────────────────────────────────
 // Canal « raw » (ce que publie réellement le firmware, cf. publierBrut dans
@@ -35,15 +47,17 @@ const computeHmac = (data) => {
 //   - value/threshold  valeurs numériques de l'événement (0 si non renseigné)
 //   - sat / sig / cap satellites, signal %, cap — optionnels, vides possible
 //
-//   Le firmware actuel (publierBrut, faucon_v12.ino) envoie TOUJOURS les 12
-//   champs à position fixe — evt/value/threshold sont vides (";;;") plutôt
-//   qu'omis quand il n'y a pas d'événement, idem pour sat/sig/cap absents.
-//   12 champs = lecture par position fixe, sans ambiguïté possible. Pour
-//   toute autre longueur (message tronqué/corrompu, ou ancien firmware qui
-//   omettait vraiment des champs), on ne lit QUE le socle commun (id..ts) :
-//   deviner evt/value/threshold vs sat/sig/cap depuis la fin est ambigu à 9
-//   champs pile (les deux variantes ont le même nombre de champs) et
-//   corrompt silencieusement sat/sig/cap avec des valeurs d'un autre champ.
+//   Le firmware actuel (publierBrut, faucon_v12.ino) envoie 12 champs à
+//   position fixe — evt/value/threshold sont vides (";;;") plutôt qu'omis
+//   quand il n'y a pas d'événement, idem pour sat/sig/cap absents.
+//   Certaines versions du firmware ajoutent des champs après les 12 champs
+//   standards (mode, état, compteur...). On lit donc les 12 premiers champs
+//   par position fixe et on ignore les champs supplémentaires au lieu de
+//   perdre satellites/signal/cap. Une trame à 11 champs est traitée comme
+//   une trame 12 champs dont le dernier (cap) est absent. Les trames plus
+//   courtes restent limitées au socle id..ts : en dessous de 11 champs, le
+//   format est ambigu et deviner sat/sig/cap risquerait de corrompre les
+//   données.
 const parseRawPayload = (payload) => {
     const parts = payload.split(';');
     if (parts.length < 6)
@@ -56,11 +70,19 @@ const parseRawPayload = (payload) => {
         id: read(0), lat: read(1), lon: read(2),
         bat: read(3), spd: read(4), ts: read(5),
     };
-    if (parts.length === 12) {
+    if (parts.length >= 12) {
         return {
             ...core,
             evt: read(6), value: read(7), threshold: read(8),
             sat: read(9), sig: read(10), cap: read(11),
+        };
+    }
+    if (parts.length === 11) {
+        // Ancienne trame sans le champ cap (dernier champ optionnel).
+        return {
+            ...core,
+            evt: read(6), value: read(7), threshold: read(8),
+            sat: read(9), sig: read(10), cap: undefined,
         };
     }
     if (parts.length !== 6) {
@@ -96,17 +118,17 @@ const handleRawMessage = async (trackerId, payloadBuffer) => {
         return;
     }
     const ts = raw.ts ? new Date(raw.ts) : new Date();
-    const capN = raw.cap !== undefined ? Number(raw.cap) : undefined;
-    const satN = raw.sat !== undefined ? Number(raw.sat) : undefined;
-    const sigN = raw.sig !== undefined ? Number(raw.sig) : undefined;
+    const capN = toOptionalNumber(raw.cap);
+    const satN = toOptionalNumber(raw.sat);
+    const sigN = toOptionalNumber(raw.sig);
     await (0, position_handler_1.handlePositionPayload)(device.id, {
         latitude: lat,
         longitude: lon,
         vitesse: spd,
-        cap: Number.isFinite(capN) ? capN : undefined,
+        cap: capN,
         battery: bat,
-        satellites: Number.isFinite(satN) ? satN : undefined,
-        signal: Number.isFinite(sigN) ? sigN : undefined,
+        satellites: satN,
+        signal: sigN,
         timestamp: ts,
         source: 'mqtt',
         eventType: (0, event_codes_1.mapTrackerEvent)(raw.evt),
@@ -147,17 +169,17 @@ const handleDataMessage = async (trackerId, payloadBuffer) => {
         console.warn(`[MQTT] Traceur inconnu : ${trackerId}`);
         return;
     }
-    const sat = payload.sat !== undefined ? Number(payload.sat) : undefined;
-    const sig = payload.sig !== undefined ? Number(payload.sig) : undefined;
-    const cap = payload.cap !== undefined ? Number(payload.cap) : undefined;
+    const sat = toOptionalNumber(payload.sat);
+    const sig = toOptionalNumber(payload.sig);
+    const cap = toOptionalNumber(payload.cap);
     await (0, position_handler_1.handlePositionPayload)(device.id, {
         latitude: lat,
         longitude: lon,
         vitesse: spd,
-        cap: Number.isFinite(cap) ? cap : undefined,
+        cap: cap,
         battery: bat,
-        satellites: Number.isFinite(sat) ? sat : undefined,
-        signal: Number.isFinite(sig) ? sig : undefined,
+        satellites: sat,
+        signal: sig,
         timestamp: ts,
         source: 'mqtt',
         eventType: (0, event_codes_1.mapTrackerEvent)(payload.evt),
@@ -249,6 +271,14 @@ const startMqttClient = () => {
             else
                 console.log('[MQTT] Abonné à faucon/+/ack');
         });
+        // Canal "diag" : diagnostic périodique du firmware v12.1 (état de santé
+        // du boîtier toutes les 5 minutes + mode réellement appliqué).
+        client.subscribe('faucon/+/diag', { qos: 1 }, (err) => {
+            if (err)
+                console.error('[MQTT] Erreur abonnement diag :', err);
+            else
+                console.log('[MQTT] Abonné à faucon/+/diag');
+        });
     });
     client.on('message', (topic, payloadBuffer) => {
         // Topic : faucon/<trackerId>/<suffix> — le trackerId du canal est extrait
@@ -258,6 +288,10 @@ const startMqttClient = () => {
         const trackerId = parts.length >= 3 ? parts[1] : topic;
         if (topic.endsWith('/ack')) {
             handleAckMessage(trackerId, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement ack :', err));
+            return;
+        }
+        if (topic.endsWith('/diag')) {
+            (0, diag_handler_1.handleDiagMessage)(trackerId, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement diag :', err));
             return;
         }
         if (topic.endsWith('/raw')) {

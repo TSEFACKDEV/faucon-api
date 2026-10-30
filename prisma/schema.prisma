@@ -30,6 +30,9 @@ enum TypeAlarme {
   DECOLLEMENT_TRACEUR
   NON_MOUVEMENT
   BATTERIE_FAIBLE
+  CONDUITE_BRUTALE
+  CHOC
+  MOUVEMENT_BRUTAL
 }
 
 enum StatutCommande {
@@ -51,6 +54,7 @@ model Utilisateur {
 
   vehicules      Vehicule[]
   refreshTokens  RefreshToken[]
+  clesApi        CleApi[]
 
   @@map("utilisateurs")
 }
@@ -261,4 +265,25 @@ model CommandeDescendante {
   @@index([vehiculeId])
   @@index([statutExecution, dateEnvoi])
   @@map("commandes_descendantes")
+}
+
+// Clé API client, strictement en lecture seule et limitée aux véhicules de
+// son propriétaire. Le secret n'est jamais stocké en clair : seule son
+// empreinte SHA-256 est conservée. Le préfixe sert uniquement à identifier
+// la clé dans l'interface (les 12 premiers caractères).
+model CleApi {
+  id                 String    @id @default(uuid())
+  utilisateurId      String
+  utilisateur        Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  nom                String
+  prefix             String
+  hash               String    @unique
+  scopes             String[]  @default(["owner:read"])
+  estActive          Boolean   @default(true)
+  dateCreation       DateTime  @default(now())
+  derniereUtilisation DateTime?
+  dateExpiration     DateTime?
+
+  @@index([utilisateurId])
+  @@map("cles_api")
 }

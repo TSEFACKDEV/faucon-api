@@ -18,6 +18,16 @@ const computeHmac = (data: string): string => {
   return crypto.createHmac('sha256', CMD_SIGN_KEY).update(data).digest('hex');
 };
 
+// Convertit un champ optionnel en nombre sans transformer null/vide en 0.
+// Important pour signal/satellites/cap : une valeur absente doit rester
+// absente (et ne pas écraser la dernière valeur connue côté app).
+const toOptionalNumber = (value: unknown): number | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'string' && value.trim() === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+};
+
 // ────────────────────────────────────────────────────────────────────────
 // Canal « raw » (ce que publie réellement le firmware, cf. publierBrut dans
 // l'ino) :
@@ -33,15 +43,17 @@ const computeHmac = (data: string): string => {
 //   - value/threshold  valeurs numériques de l'événement (0 si non renseigné)
 //   - sat / sig / cap satellites, signal %, cap — optionnels, vides possible
 //
-//   Le firmware actuel (publierBrut, faucon_v12.ino) envoie TOUJOURS les 12
-//   champs à position fixe — evt/value/threshold sont vides (";;;") plutôt
-//   qu'omis quand il n'y a pas d'événement, idem pour sat/sig/cap absents.
-//   12 champs = lecture par position fixe, sans ambiguïté possible. Pour
-//   toute autre longueur (message tronqué/corrompu, ou ancien firmware qui
-//   omettait vraiment des champs), on ne lit QUE le socle commun (id..ts) :
-//   deviner evt/value/threshold vs sat/sig/cap depuis la fin est ambigu à 9
-//   champs pile (les deux variantes ont le même nombre de champs) et
-//   corrompt silencieusement sat/sig/cap avec des valeurs d'un autre champ.
+//   Le firmware actuel (publierBrut, faucon_v12.ino) envoie 12 champs à
+//   position fixe — evt/value/threshold sont vides (";;;") plutôt qu'omis
+//   quand il n'y a pas d'événement, idem pour sat/sig/cap absents.
+//   Certaines versions du firmware ajoutent des champs après les 12 champs
+//   standards (mode, état, compteur...). On lit donc les 12 premiers champs
+//   par position fixe et on ignore les champs supplémentaires au lieu de
+//   perdre satellites/signal/cap. Une trame à 11 champs est traitée comme
+//   une trame 12 champs dont le dernier (cap) est absent. Les trames plus
+//   courtes restent limitées au socle id..ts : en dessous de 11 champs, le
+//   format est ambigu et deviner sat/sig/cap risquerait de corrompre les
+//   données.
 const parseRawPayload = (payload: string): Record<string, string | undefined> | null => {
   const parts = payload.split(';');
   if (parts.length < 6) return null;
@@ -56,11 +68,20 @@ const parseRawPayload = (payload: string): Record<string, string | undefined> | 
     bat: read(3), spd: read(4), ts:  read(5),
   };
 
-  if (parts.length === 12) {
+  if (parts.length >= 12) {
     return {
       ...core,
       evt: read(6), value: read(7), threshold: read(8),
       sat: read(9), sig: read(10), cap: read(11),
+    };
+  }
+
+  if (parts.length === 11) {
+    // Ancienne trame sans le champ cap (dernier champ optionnel).
+    return {
+      ...core,
+      evt: read(6), value: read(7), threshold: read(8),
+      sat: read(9), sig: read(10), cap: undefined,
     };
   }
 
@@ -102,18 +123,18 @@ const handleRawMessage = async (trackerId: string, payloadBuffer: Buffer): Promi
   }
 
   const ts = raw.ts ? new Date(raw.ts) : new Date();
-  const capN = raw.cap !== undefined ? Number(raw.cap) : undefined;
-  const satN = raw.sat !== undefined ? Number(raw.sat) : undefined;
-  const sigN = raw.sig !== undefined ? Number(raw.sig) : undefined;
+  const capN = toOptionalNumber(raw.cap);
+  const satN = toOptionalNumber(raw.sat);
+  const sigN = toOptionalNumber(raw.sig);
 
   await handlePositionPayload(device.id, {
     latitude:  lat,
     longitude: lon,
     vitesse:   spd,
-    cap:       Number.isFinite(capN as number) ? capN : undefined,
+    cap:       capN,
     battery:   bat,
-    satellites: Number.isFinite(satN as number) ? satN : undefined,
-    signal:     Number.isFinite(sigN as number) ? sigN : undefined,
+    satellites: satN,
+    signal:     sigN,
     timestamp: ts,
     source:    'mqtt',
     eventType: mapTrackerEvent(raw.evt),
@@ -159,18 +180,18 @@ const handleDataMessage = async (trackerId: string, payloadBuffer: Buffer): Prom
     return;
   }
 
-  const sat = payload.sat !== undefined ? Number(payload.sat) : undefined;
-  const sig = payload.sig !== undefined ? Number(payload.sig) : undefined;
-  const cap = payload.cap !== undefined ? Number(payload.cap) : undefined;
+  const sat = toOptionalNumber(payload.sat);
+  const sig = toOptionalNumber(payload.sig);
+  const cap = toOptionalNumber(payload.cap);
 
   await handlePositionPayload(device.id, {
     latitude:  lat,
     longitude: lon,
     vitesse:   spd,
-    cap:       Number.isFinite(cap) ? cap : undefined,
+    cap:       cap,
     battery:   bat,
-    satellites: Number.isFinite(sat) ? sat : undefined,
-    signal:     Number.isFinite(sig) ? sig : undefined,
+    satellites: sat,
+    signal:     sig,
     timestamp: ts,
     source:    'mqtt',
     eventType: mapTrackerEvent(payload.evt),

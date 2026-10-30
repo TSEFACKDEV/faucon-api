@@ -6,6 +6,8 @@ import cors from 'cors';
 import morgan from 'morgan';
 import authRoutes    from './routes/auth.routes';
 import vehicleRoutes from './routes/vehicle.routes';
+import ownerRoutes   from './routes/owner.routes';
+import apiKeyRoutes  from './routes/apiKey.routes';
 import trackerRoutes from './routes/tracker.routes';
 import adminRoutes    from './routes/admin.routes';
 import { errorHandler, notFound } from './middlewares/error.middleware';
@@ -42,6 +44,8 @@ app.get('/version', (_, res) => {
 // `Vehicule`). Historiquement monté aussi sous `/devices` en doublon — retiré
 // pour éviter deux surfaces d'API identiques à maintenir.
 app.use('/auth',     authRoutes);
+app.use('/api-keys', apiKeyRoutes);
+app.use('/owner',    ownerRoutes);
 app.use('/vehicles', vehicleRoutes);
 app.use('/tracker',  trackerRoutes);
 app.use('/admin', adminRoutes);

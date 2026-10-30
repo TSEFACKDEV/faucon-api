@@ -9,7 +9,7 @@
 * 🟢 You can import this file directly.
 */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.StatutCommande = exports.CanalNotification = exports.TypeAlarme = exports.ModeFonctionnement = exports.Role = void 0;
+exports.StatutCommande = exports.TypeAlarme = exports.ModeFonctionnement = exports.Role = void 0;
 exports.Role = {
     UTILISATEUR: 'UTILISATEUR',
     ADMIN: 'ADMIN'
@@ -24,12 +24,10 @@ exports.TypeAlarme = {
     VITESSE_EXCESSIVE: 'VITESSE_EXCESSIVE',
     DECOLLEMENT_TRACEUR: 'DECOLLEMENT_TRACEUR',
     NON_MOUVEMENT: 'NON_MOUVEMENT',
-    BATTERIE_FAIBLE: 'BATTERIE_FAIBLE'
-};
-exports.CanalNotification = {
-    SMS: 'SMS',
-    PUSH: 'PUSH',
-    EMAIL: 'EMAIL'
+    BATTERIE_FAIBLE: 'BATTERIE_FAIBLE',
+    CONDUITE_BRUTALE: 'CONDUITE_BRUTALE',
+    CHOC: 'CHOC',
+    MOUVEMENT_BRUTAL: 'MOUVEMENT_BRUTAL'
 };
 exports.StatutCommande = {
     PENDING: 'PENDING',
