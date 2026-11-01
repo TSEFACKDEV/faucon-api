@@ -277,10 +277,12 @@ export const startMqttClient = (): void => {
 
   client.on('connect', () => {
     console.log('📡 MQTT connecté au broker');
-    // `raw` = format natif du firmware ; `data` = JSON (relais éventuel).
-    client!.subscribe(['faucon/+/raw', 'faucon/+/data'], { qos: 1 }, (err) => {
-      if (err) console.error('[MQTT] Erreur abonnement data/raw :', err);
-      else console.log('[MQTT] Abonné à faucon/+/raw et faucon/+/data');
+    // `raw` = format natif du firmware. On ne s'abonne plus à `data` : le
+    // relais historique republiait chaque trame raw sur data, ce qui faisait
+    // traiter deux fois chaque position (et perdre des événements).
+    client!.subscribe('faucon/+/raw', { qos: 1 }, (err) => {
+      if (err) console.error('[MQTT] Erreur abonnement raw :', err);
+      else console.log('[MQTT] Abonné à faucon/+/raw');
     });
     client!.subscribe('faucon/+/ack', { qos: 1 }, (err) => {
       if (err) console.error('[MQTT] Erreur abonnement ack :', err);
@@ -313,7 +315,8 @@ export const startMqttClient = (): void => {
       handleRawMessage(trackerId, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement raw :', err));
       return;
     }
-    handleDataMessage(trackerId, payloadBuffer).catch((err) => console.error('[MQTT] Erreur traitement data :', err));
+    // Ancien canal JSON du relais : ignoré (le relais n'est plus utilisé).
+    console.warn(`[MQTT] Topic ignoré : ${topic}`);
   });
 
   client.on('error', (err) => console.error('[MQTT] Erreur connexion :', err));

@@ -29,10 +29,14 @@ export const handlePositionPayload = async (
   payload: PositionPayload
 ): Promise<void> => {
   try {
-    // Déduplication : une même trame peut arriver par plusieurs canaux
-    // (firmware → `raw` ET relais → `data`, TCP + MQTT redondants) ou être
-    // redélivrée (QoS 1). On ne persiste qu'une position par véhicule pour un
-    // même horodatage (± 2 s), sinon l'historique et la trace sont faussés.
+    // Déduplication : une même trame peut être redélivrée (QoS 1) ou arriver
+    // par deux canaux redondants (TCP + MQTT). On ne persiste qu'une position
+    // par véhicule pour un MÊME point GPS et un même horodatage (± 2 s).
+    //
+    // Important : deux positions distinctes peuvent partager la même seconde
+    // (le firmware a une granularité de 1 s) — les coordonnées font donc
+    // partie de la clé de déduplication. Avant, la deuxième position de la
+    // même seconde était perdue et l'historique sautait un point.
     //
     // Le contrôle (findFirst) puis l'écriture (create) ne sont pas atomiques
     // par nature : deux trames quasi simultanées pour le MÊME véhicule
@@ -46,6 +50,8 @@ export const handlePositionPayload = async (
       const duplicate = await tx.position.findFirst({
         where: {
           vehiculeId,
+          latitude: payload.latitude,
+          longitude: payload.longitude,
           horodatage: {
             gte: new Date(payload.timestamp.getTime() - 2000),
             lte: new Date(payload.timestamp.getTime() + 2000),
@@ -124,8 +130,8 @@ export const handlePositionPayload = async (
       return true;
     });
 
-    // Duplicata : on diffuse quand même en temps réel (le dashboard a besoin
-    // de la fraîcheur) mais on ne crée pas de nouvelle rangée.
+    // Point déjà présent : on diffuse quand même la trame (le dashboard a
+    // besoin de la fraîcheur) sans créer de nouvelle rangée.
     if (!isNewPosition) {
       broadcastPosition(vehiculeId, {
         vehiculeId,
@@ -141,7 +147,22 @@ export const handlePositionPayload = async (
         source:    payload.source,
         eventType: payload.eventType,
       });
-      console.log(`[POSITION] ${vehiculeId} → duplicata ignoré (${payload.source})`);
+
+      // CRUCIAL : un événement (décollement, choc…) peut être porté par une
+      // trame dont la position a déjà été enregistrée par l'autre canal.
+      // Avant, on sortait ici et l'alarme n'était jamais créée.
+      if (payload.eventType && payload.source !== 'tcp') {
+        await recordEventAlarm(
+          vehiculeId, payload.eventType as EventType,
+          payload.latitude, payload.longitude, payload.timestamp,
+          payload.eventValue, payload.eventThreshold
+        );
+      }
+      checkBatteryLevel(
+        vehiculeId, payload.battery, payload.latitude, payload.longitude
+      ).catch(console.error);
+
+      console.log(`[POSITION] ${vehiculeId} → point déjà connu (${payload.source})`);
       return;
     }
 
