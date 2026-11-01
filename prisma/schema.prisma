@@ -180,6 +180,8 @@ model Position {
   niveauSignal   Int?
   hdop           Float?
   niveauBatterie Int
+  // État du support Hall au moment de la trame (null si non transmis).
+  colle          Boolean?
   statutACC      Boolean
   cyc            Int?
   alr            Int?
