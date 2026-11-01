@@ -54,14 +54,14 @@ export async function resolveApiKey(rawKey: string): Promise<string | null> {
       utilisateurId: true,
       scopes: true,
       estActive: true,
-      dateExpiration: true,
     },
   });
 
   if (!record || !record.estActive) return null;
-  if (record.dateExpiration && record.dateExpiration.getTime() < Date.now()) {
-    return null;
-  }
+  // Les clés propriétaires sont permanentes : elles ne expirent pas avec le
+  // temps, elles ne cessent de fonctionner que lorsqu'elles sont révoquées
+  // explicitement depuis l'application. Évite les intégrations qui tombent
+  // en panne sans raison visible.
   if (!record.scopes.includes(OWNER_SCOPE)) return null;
 
   // Trace d'usage (sans jamais journaliser la clé elle-même).
