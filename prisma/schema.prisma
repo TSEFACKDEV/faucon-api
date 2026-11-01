@@ -90,6 +90,8 @@ model Vehicule {
   mqttPassword          String?
   modeActuel            ModeFonctionnement @default(MOVE)
   niveauBatterie        Int                @default(100)
+  // État du support Hall : true = collé, false = décollé, null = inconnu.
+  estColle              Boolean?
   estActif              Boolean            @default(true)
   dateAjout             DateTime           @default(now())
   derniereCommunication DateTime?

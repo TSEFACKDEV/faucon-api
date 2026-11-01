@@ -73,15 +73,18 @@ const parseRawPayload = (payload: string): Record<string, string | undefined> | 
       ...core,
       evt: read(6), value: read(7), threshold: read(8),
       sat: read(9), sig: read(10), cap: read(11),
+      // Champ ajouté par le firmware du 1er novembre 2026 :
+      // 1 = collé, 0 = décollé, -1/absent = inconnu.
+      colle: read(12),
     };
   }
 
-  if (parts.length === 11) {
-    // Ancienne trame sans le champ cap (dernier champ optionnel).
+  if (parts.length === 11 || parts.length === 12) {
+    // Ancienne trame sans le champ cap et/ou sans l'état Hall.
     return {
       ...core,
       evt: read(6), value: read(7), threshold: read(8),
-      sat: read(9), sig: read(10), cap: undefined,
+      sat: read(9), sig: read(10), cap: read(11), colle: undefined,
     };
   }
 
@@ -126,6 +129,16 @@ const handleRawMessage = async (trackerId: string, payloadBuffer: Buffer): Promi
   const capN = toOptionalNumber(raw.cap);
   const satN = toOptionalNumber(raw.sat);
   const sigN = toOptionalNumber(raw.sig);
+  const evtCode = raw.evt?.trim();
+
+  // Événement 6 = traceur recollé (nouveau firmware). Ce n'est pas une
+  // alarme : on met simplement à jour l'état du support. Les événements 1
+  // (décollé) restent des alarmes.
+  const colleFromEvent =
+    evtCode === '6' ? true : evtCode === '1' ? false : undefined;
+  const colleField =
+    raw.colle === '1' ? true : raw.colle === '0' ? false : undefined;
+  const colle = colleFromEvent ?? colleField;
 
   await handlePositionPayload(device.id, {
     latitude:  lat,
@@ -137,7 +150,8 @@ const handleRawMessage = async (trackerId: string, payloadBuffer: Buffer): Promi
     signal:     sigN,
     timestamp: ts,
     source:    'mqtt',
-    eventType: mapTrackerEvent(raw.evt),
+    colle,
+    eventType: evtCode === '6' ? undefined : mapTrackerEvent(raw.evt),
     eventValue:     raw.value !== undefined ? Number(raw.value) : undefined,
     eventThreshold: raw.threshold !== undefined ? Number(raw.threshold) : undefined,
   });

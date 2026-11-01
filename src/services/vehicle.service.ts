@@ -112,7 +112,7 @@ export const vehicleService = {
       data: updateData,
       select: {
         id: true, imei: true, trackerId: true, nom: true,
-        modeActuel: true, niveauBatterie: true, estActif: true, dateAjout: true,
+        modeActuel: true, niveauBatterie: true, estColle: true, estActif: true, dateAjout: true,
       },
     });
   },
@@ -127,7 +127,7 @@ export const vehicleService = {
       where: { utilisateurId },
       select: {
         id: true, imei: true, trackerId: true, nom: true, image: true,
-        modeActuel: true, niveauBatterie: true, estActif: true,
+        modeActuel: true, niveauBatterie: true, estColle: true, estActif: true,
         derniereCommunication: true, telephoneAlerte: true,
         limiteVitesse: true,
         perimetreGeofence: true,
@@ -398,6 +398,7 @@ export const vehicleService = {
         id: true, latitude: true, longitude: true,
         vitesse: true, cap: true, horodatage: true,
         niveauBatterie: true, nbSatellites: true, niveauSignal: true,
+        colle: true,
       },
     });
   },
@@ -429,6 +430,7 @@ export const vehicleService = {
         id: true, latitude: true, longitude: true,
         vitesse: true, cap: true, horodatage: true,
         niveauBatterie: true, nbSatellites: true, niveauSignal: true,
+        colle: true,
       },
     });
   },

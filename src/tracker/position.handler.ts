@@ -20,6 +20,8 @@ interface PositionPayload {
   eventType?: string;
   eventValue?: number;
   eventThreshold?: number;
+  // État du support Hall : true = collé, false = décollé.
+  colle?: boolean;
   cycleNumber?: number;
   alertCount?: number;
 }
@@ -87,6 +89,9 @@ export const handlePositionPayload = async (
               ...(payload.alertCount !== undefined
                   ? { alr: payload.alertCount }
                   : {}),
+              ...(payload.colle !== undefined
+                  ? { colle: payload.colle }
+                  : {}),
             },
           });
           await tx.vehicule.update({
@@ -94,6 +99,9 @@ export const handlePositionPayload = async (
             data: {
               derniereCommunication: payload.timestamp,
               niveauBatterie: payload.battery,
+              ...(payload.colle !== undefined
+                  ? { estColle: payload.colle }
+                  : {}),
             },
           });
         }
@@ -111,6 +119,7 @@ export const handlePositionPayload = async (
           nbSatellites:  payload.satellites,
           niveauSignal:  payload.signal,
           niveauBatterie: payload.battery,
+          colle:          payload.colle,
           statutACC:     payload.acc ?? false,
           cyc:           payload.cycleNumber,
           alr:           payload.alertCount,
@@ -124,6 +133,9 @@ export const handlePositionPayload = async (
         data: {
           derniereCommunication: payload.timestamp,
           niveauBatterie: payload.battery,
+          ...(payload.colle !== undefined
+              ? { estColle: payload.colle }
+              : {}),
         },
       });
 
@@ -146,6 +158,7 @@ export const handlePositionPayload = async (
         horodatage: payload.timestamp.toISOString(),
         source:    payload.source,
         eventType: payload.eventType,
+        colle:     payload.colle,
       });
 
       // CRUCIAL : un événement (décollement, choc…) peut être porté par une
@@ -180,6 +193,7 @@ export const handlePositionPayload = async (
       horodatage: payload.timestamp.toISOString(),
       source:    payload.source,
       eventType: payload.eventType,
+      colle:     payload.colle,
     });
 
     // 4. Vérifications asynchrones (ne bloquent pas la réponse au traceur)
